@@ -7,13 +7,11 @@ def test_default_theme_is_dark():
     assert DEFAULT_THEME == "dark"
 
 
-def test_get_colors_returns_dark():
+def test_get_colors_pwc_palette():
     colors = get_colors()
-    assert colors["accent"] == "#60A5FA"
-    assert colors["bg_start"] == "#0B1120"
+    assert colors["brand"] == "#D04A02"
+    assert colors["accent"] == "#D04A02"
 
 
-def test_get_colors_ignores_light_request():
-    """Product is dark-only; any theme key resolves to dark palette."""
-    colors = get_colors("light")
-    assert colors == THEMES["dark"]
+def test_get_colors_always_dark():
+    assert get_colors("light") == THEMES["dark"]

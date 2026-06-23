@@ -16,7 +16,7 @@ QuakePulse transforms USGS earthquake data into a polished seismic intelligence 
 
 | Capability | Description |
 |------------|-------------|
-| **Dark glass UI** | FAANG-inspired glassmorphism — dark theme only |
+| **PwC executive UI** | Dark corporate layout · orange accent · mobile & desktop responsive |
 | **Live pipeline** | USGS GeoJSON feeds · 60s cache · true auto-refresh |
 | **Executive KPIs** | Events, magnitude, energy, shallow-event ratio |
 | **Tabbed workspace** | Overview · Map · Analytics · Alerts · Data |

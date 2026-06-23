@@ -1,6 +1,6 @@
 [project]
 name = "quakepulse"
-version = "2.1.0"
+version = "2.2.0"
 description = "Global seismic intelligence platform powered by USGS live feeds"
 readme = "README.md"
 requires-python = ">=3.10"

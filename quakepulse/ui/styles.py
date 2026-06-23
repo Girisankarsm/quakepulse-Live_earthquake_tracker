@@ -1,4 +1,4 @@
-"""FAANG-inspired glassmorphism UI — dark theme."""
+"""PwC-inspired responsive executive UI."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from quakepulse.config import get_colors
 
 
 def inject_custom_css(theme: str = "dark") -> None:
-    """Inject global glass UI styles."""
+    """Inject PwC-style responsive glass UI."""
     c = get_colors(theme)
     st.markdown(
         f"""
@@ -16,160 +16,225 @@ def inject_custom_css(theme: str = "dark") -> None:
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
             html, body, [class*="css"] {{
-                font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                font-family: 'Inter', Arial, Helvetica, sans-serif;
                 -webkit-font-smoothing: antialiased;
             }}
 
             .stApp {{
-                background:
-                    radial-gradient(ellipse 80% 60% at 10% 0%, rgba(37, 99, 235, 0.14) 0%, transparent 55%),
-                    radial-gradient(ellipse 70% 50% at 90% 10%, rgba(124, 58, 237, 0.12) 0%, transparent 50%),
-                    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(16, 185, 129, 0.08) 0%, transparent 45%),
-                    linear-gradient(160deg, {c['bg_start']} 0%, {c['bg_mid']} 45%, {c['bg_end']} 100%);
+                background: linear-gradient(180deg, {c['bg_start']} 0%, {c['bg_mid']} 50%, {c['bg_end']} 100%);
                 background-attachment: fixed;
             }}
 
             .block-container {{
-                padding-top: 1.5rem;
-                padding-bottom: 2rem;
-                max-width: 1380px;
+                padding: 1rem 1.25rem 2rem;
+                max-width: 1440px;
             }}
 
+            /* ── Sidebar: structured PwC control rail ── */
             [data-testid="stSidebar"] {{
                 background: {c['glass_sidebar']} !important;
-                backdrop-filter: blur(24px) saturate(160%);
-                -webkit-backdrop-filter: blur(24px) saturate(160%);
-                border-right: 1px solid rgba(255, 255, 255, 0.12);
+                border-right: 1px solid {c['border']};
             }}
-            [data-testid="stSidebar"] > div:first-child {{ background: transparent !important; }}
             [data-testid="stSidebar"] * {{ color: {c['text_on_dark']} !important; }}
-            [data-testid="stSidebar"] hr {{ border-color: rgba(255, 255, 255, 0.14) !important; }}
+            [data-testid="stSidebar"] .qp-side-label {{
+                font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
+                text-transform: uppercase; color: {c['accent']} !important;
+                margin: 1rem 0 0.5rem 0;
+            }}
 
+            /* ── Top bar ── */
+            .qp-topbar {{
+                display: flex; flex-wrap: wrap; align-items: center;
+                justify-content: space-between; gap: 0.75rem;
+                margin-bottom: 1rem; padding-bottom: 0.75rem;
+                border-bottom: 1px solid {c['border_soft']};
+            }}
+            .qp-breadcrumb {{
+                font-size: 0.78rem; color: {c['text_muted']}; font-weight: 500;
+            }}
+            .qp-breadcrumb strong {{ color: {c['text']}; }}
+
+            /* ── Header panel ── */
             .qp-header {{
                 background: {c['glass_strong']};
-                backdrop-filter: blur(20px) saturate(180%);
-                -webkit-backdrop-filter: blur(20px) saturate(180%);
                 border: 1px solid {c['border']};
-                border-radius: 20px;
-                padding: 2rem 2.25rem;
-                margin-bottom: 1.5rem;
-                box-shadow: {c['shadow_lg']};
+                border-left: 4px solid {c['brand']};
+                border-radius: 4px 12px 12px 4px;
+                padding: 1.5rem 1.75rem;
+                margin-bottom: 1.25rem;
+                box-shadow: {c['shadow']};
             }}
-            .qp-brand {{ display: flex; align-items: center; gap: 0.85rem; }}
+            .qp-brand {{ display: flex; align-items: flex-start; gap: 1rem; }}
             .qp-logo {{
-                width: 44px; height: 44px; border-radius: 14px;
-                background: linear-gradient(135deg, {c['accent']} 0%, {c['violet']} 100%);
+                width: 48px; height: 48px; border-radius: 8px; flex-shrink: 0;
+                background: {c['brand']};
                 display: flex; align-items: center; justify-content: center;
-                font-size: 1.25rem; box-shadow: 0 8px 24px {c['accent_glow']};
+                font-size: 1.35rem;
             }}
             .qp-header h1 {{
-                color: {c['text']}; font-size: 1.75rem; font-weight: 700;
-                margin: 0; letter-spacing: -0.03em; line-height: 1.2;
+                color: {c['text']}; font-size: 1.5rem; font-weight: 700;
+                margin: 0; letter-spacing: -0.02em; line-height: 1.25;
             }}
             .qp-header p {{
-                color: {c['text_muted']}; margin: 0.35rem 0 0 0;
-                font-size: 0.95rem; font-weight: 400;
+                color: {c['text_muted']}; margin: 0.3rem 0 0;
+                font-size: 0.9rem; line-height: 1.45;
             }}
             .qp-version {{
-                display: inline-block; margin-left: 0.5rem;
-                font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem;
-                border-radius: 6px; background: {c['accent_glow']}; color: {c['accent']};
+                display: inline-block; margin-left: 0.4rem;
+                font-size: 0.65rem; font-weight: 600; padding: 0.12rem 0.45rem;
+                border-radius: 4px; background: {c['brand_soft']}; color: {c['brand']};
                 vertical-align: middle;
             }}
 
-            .qp-status-row {{ display: flex; flex-wrap: wrap; gap: 0.65rem; margin-bottom: 1.25rem; }}
+            /* ── Status chips ── */
+            .qp-status-row {{
+                display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;
+            }}
             .qp-chip {{
-                display: inline-flex; align-items: center; gap: 0.45rem;
-                background: {c['glass_strong']}; backdrop-filter: blur(16px);
-                border: 1px solid {c['border']}; border-radius: 999px;
-                padding: 0.45rem 0.95rem; font-size: 0.82rem; font-weight: 500;
-                color: {c['text']}; box-shadow: {c['shadow']};
+                display: inline-flex; align-items: center; gap: 0.4rem;
+                background: {c['glass_strong']}; border: 1px solid {c['border']};
+                border-radius: 4px; padding: 0.4rem 0.75rem;
+                font-size: 0.78rem; font-weight: 500; color: {c['text']};
             }}
-            .qp-chip-live {{
-                color: {c['success']}; border-color: rgba(16, 185, 129, 0.35);
-                background: rgba(16, 185, 129, 0.1);
-            }}
+            .qp-chip-live {{ color: {c['success']}; border-color: rgba(52, 211, 153, 0.3); }}
+            .qp-chip-hide-mobile {{ }}
             .qp-status-dot {{
-                width: 7px; height: 7px; background: {c['success']};
-                border-radius: 50%; box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25);
-                animation: qp-pulse 2.4s ease-in-out infinite;
+                width: 6px; height: 6px; background: {c['success']};
+                border-radius: 50%; animation: qp-pulse 2.4s ease-in-out infinite;
             }}
             @keyframes qp-pulse {{
-                0%, 100% {{ opacity: 1; transform: scale(1); }}
-                50% {{ opacity: 0.55; transform: scale(0.92); }}
+                0%, 100% {{ opacity: 1; }} 50% {{ opacity: 0.45; }}
             }}
 
-            .qp-kpi-card {{
-                background: {c['glass_strong']}; backdrop-filter: blur(18px) saturate(160%);
-                border: 1px solid {c['border']}; border-radius: 16px;
-                padding: 1.25rem 1.35rem; box-shadow: {c['shadow']}; height: 100%;
-                transition: transform 0.2s ease, box-shadow 0.2s ease;
+            /* ── KPI responsive grid ── */
+            .qp-kpi-grid {{
+                display: grid;
+                grid-template-columns: repeat(5, 1fr);
+                gap: 0.75rem;
+                margin-bottom: 1.25rem;
             }}
-            .qp-kpi-card:hover {{ transform: translateY(-2px); box-shadow: {c['shadow_lg']}; }}
+            .qp-kpi-card {{
+                background: {c['glass_strong']};
+                border: 1px solid {c['border']};
+                border-top: 3px solid {c['brand']};
+                border-radius: 8px;
+                padding: 1rem 1.1rem;
+                min-height: 100px;
+            }}
             .qp-kpi-label {{
-                color: {c['text_muted']}; font-size: 0.72rem; font-weight: 600;
-                text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.5rem;
+                color: {c['text_muted']}; font-size: 0.68rem; font-weight: 700;
+                text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.4rem;
             }}
             .qp-kpi-value {{
-                color: {c['text']}; font-size: 1.55rem; font-weight: 700;
-                line-height: 1.15; letter-spacing: -0.02em;
+                color: {c['text']}; font-size: 1.35rem; font-weight: 700;
+                line-height: 1.2; word-break: break-word;
             }}
-            .qp-kpi-sub {{ color: {c['slate']}; font-size: 0.8rem; margin-top: 0.45rem; line-height: 1.4; }}
+            .qp-kpi-sub {{
+                color: {c['slate']}; font-size: 0.75rem; margin-top: 0.35rem; line-height: 1.35;
+            }}
 
+            /* ── Content panels ── */
+            .qp-panel {{
+                background: {c['glass_strong']};
+                border: 1px solid {c['border']};
+                border-radius: 8px;
+                padding: 1rem 1.15rem;
+                margin-bottom: 1rem;
+                box-shadow: {c['shadow']};
+            }}
+            .qp-panel-head {{
+                display: flex; flex-wrap: wrap; align-items: baseline;
+                justify-content: space-between; gap: 0.35rem;
+                margin-bottom: 0.85rem; padding-bottom: 0.65rem;
+                border-bottom: 1px solid {c['border_soft']};
+            }}
+            .qp-panel-title {{
+                color: {c['text']}; font-size: 0.95rem; font-weight: 700;
+                margin: 0; letter-spacing: -0.01em;
+            }}
+            .qp-panel-sub {{
+                color: {c['text_muted']}; font-size: 0.78rem; font-weight: 400;
+            }}
             .qp-summary {{
-                background: {c['glass']}; backdrop-filter: blur(16px);
-                border: 1px solid {c['border']}; border-radius: 16px;
-                padding: 1.15rem 1.4rem; margin-bottom: 1.25rem;
-                color: {c['text']}; font-size: 0.94rem; line-height: 1.65; box-shadow: {c['shadow']};
+                background: {c['glass']}; border: 1px solid {c['border']};
+                border-left: 3px solid {c['brand']}; border-radius: 0 8px 8px 0;
+                padding: 1rem 1.15rem; margin-bottom: 1.25rem;
+                color: {c['text']}; font-size: 0.9rem; line-height: 1.6;
             }}
-            .qp-section-title {{
-                color: {c['text']}; font-size: 1.05rem; font-weight: 600;
-                letter-spacing: -0.01em; margin: 0 0 0.75rem 0;
+            .qp-section-zone {{
+                margin-bottom: 1.5rem;
             }}
+            .qp-zone-label {{
+                font-size: 0.68rem; font-weight: 700; letter-spacing: 0.12em;
+                text-transform: uppercase; color: {c['brand']};
+                margin: 0 0 0.65rem 0;
+            }}
+
             .qp-alert-critical {{
-                background: rgba(239, 68, 68, 0.08); backdrop-filter: blur(12px);
-                border: 1px solid rgba(239, 68, 68, 0.22); border-radius: 14px;
-                padding: 0.9rem 1.1rem; margin-bottom: 0.55rem; color: {c['text']};
+                background: rgba(248, 113, 113, 0.08);
+                border: 1px solid rgba(248, 113, 113, 0.22);
+                border-radius: 6px; padding: 0.85rem 1rem;
+                margin-bottom: 0.5rem; color: {c['text']};
             }}
             .qp-footer {{
-                color: {c['text_muted']}; font-size: 0.78rem; text-align: center;
-                padding: 1.75rem 0 0.5rem; margin-top: 2rem;
+                color: {c['text_muted']}; font-size: 0.75rem; text-align: center;
+                padding: 1.5rem 0 0.5rem; margin-top: 1.5rem;
                 border-top: 1px solid {c['border_soft']};
             }}
 
-            .stTabs [data-baseweb="tab-list"] {{ gap: 0.4rem; background: transparent; border-bottom: none; }}
+            /* ── Streamlit overrides ── */
+            .stTabs [data-baseweb="tab-list"] {{
+                gap: 0.35rem; flex-wrap: nowrap; overflow-x: auto;
+                -webkit-overflow-scrolling: touch; scrollbar-width: none;
+            }}
+            .stTabs [data-baseweb="tab-list"]::-webkit-scrollbar {{ display: none; }}
             .stTabs [data-baseweb="tab"] {{
-                background: {c['glass']}; backdrop-filter: blur(12px);
-                border: 1px solid {c['border_soft']}; border-radius: 12px;
-                padding: 0.55rem 1.15rem; font-weight: 600; font-size: 0.88rem;
-                color: {c['text_muted']}; transition: all 0.2s ease;
+                background: {c['glass']}; border: 1px solid {c['border']};
+                border-radius: 6px; padding: 0.5rem 1rem;
+                font-weight: 600; font-size: 0.82rem; color: {c['text_muted']};
+                white-space: nowrap; min-height: 44px;
             }}
-            .stTabs [data-baseweb="tab"]:hover {{ background: {c['glass_strong']}; color: {c['text']}; }}
             .stTabs [aria-selected="true"] {{
-                background: linear-gradient(135deg, {c['accent']} 0%, {c['violet']} 100%) !important;
-                color: #FFFFFF !important; border-color: transparent !important;
-                box-shadow: 0 6px 20px {c['accent_glow']};
+                background: {c['brand']} !important; color: #FFFFFF !important;
+                border-color: {c['brand']} !important;
             }}
-            .stTabs [data-baseweb="tab-panel"] {{ padding-top: 1.1rem; }}
+            .stTabs [data-baseweb="tab-panel"] {{ padding-top: 1rem; }}
 
             [data-testid="stPlotlyChart"] {{
-                background: {c['glass_strong']}; backdrop-filter: blur(14px);
-                border: 1px solid {c['border']}; border-radius: 18px;
-                padding: 0.5rem; box-shadow: {c['shadow']};
+                background: {c['glass_strong']}; border: 1px solid {c['border']};
+                border-radius: 8px; padding: 0.35rem; margin-bottom: 0.5rem;
             }}
             [data-testid="stDataFrame"] {{
-                border: 1px solid {c['border']}; border-radius: 16px;
-                overflow: hidden; box-shadow: {c['shadow']};
+                border: 1px solid {c['border']}; border-radius: 8px; overflow-x: auto;
             }}
             .stDownloadButton button {{
-                border-radius: 12px !important; font-weight: 600 !important; border: none !important;
-                background: linear-gradient(135deg, {c['accent']} 0%, {c['violet']} 100%) !important;
-                box-shadow: 0 6px 18px {c['accent_glow']} !important;
+                border-radius: 6px !important; font-weight: 600 !important;
+                background: {c['brand']} !important; min-height: 44px !important;
+                width: 100%;
             }}
-            .stAlert {{
-                border-radius: 14px !important;
-                border: 1px solid {c['border_soft']} !important;
-                backdrop-filter: blur(10px);
+            .stAlert {{ border-radius: 6px !important; }}
+
+            /* ── Mobile: stack columns, compact layout ── */
+            @media (max-width: 1024px) {{
+                .qp-kpi-grid {{ grid-template-columns: repeat(3, 1fr); }}
+            }}
+            @media (max-width: 768px) {{
+                .block-container {{ padding: 0.75rem 0.85rem 1.5rem; }}
+                .qp-header {{ padding: 1.1rem 1.15rem; }}
+                .qp-header h1 {{ font-size: 1.2rem; }}
+                .qp-kpi-grid {{ grid-template-columns: repeat(2, 1fr); gap: 0.55rem; }}
+                .qp-kpi-value {{ font-size: 1.15rem; }}
+                .qp-chip-hide-mobile {{ display: none !important; }}
+                div[data-testid="stHorizontalBlock"] {{ flex-wrap: wrap !important; gap: 0.5rem !important; }}
+                div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {{
+                    width: 100% !important; flex: 1 1 100% !important; min-width: 100% !important;
+                }}
+                .stTabs [data-baseweb="tab"] {{ padding: 0.45rem 0.75rem; font-size: 0.78rem; }}
+            }}
+            @media (max-width: 480px) {{
+                .qp-kpi-grid {{ grid-template-columns: 1fr; }}
+                .qp-brand {{ flex-direction: row; align-items: center; }}
+                .qp-logo {{ width: 40px; height: 40px; font-size: 1.1rem; }}
             }}
 
             #MainMenu {{visibility: hidden;}}

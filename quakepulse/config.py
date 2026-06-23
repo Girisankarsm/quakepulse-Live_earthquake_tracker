@@ -18,76 +18,51 @@ MAP_DISPLAY_LIMIT = 2000
 ANIMATION_LIMIT = 500
 CHART_SAMPLE_LIMIT = 3000
 
+# PwC-inspired dark executive palette
 THEMES: dict[str, dict[str, str]] = {
-    "light": {
-        "accent": "#2563EB",
-        "accent_soft": "#60A5FA",
-        "accent_glow": "rgba(37, 99, 235, 0.18)",
-        "violet": "#7C3AED",
-        "navy": "#0F172A",
-        "navy_light": "#1E293B",
-        "slate": "#475569",
-        "bg_start": "#EEF2FF",
-        "bg_mid": "#F0F9FF",
-        "bg_end": "#F5F3FF",
-        "glass": "rgba(255, 255, 255, 0.58)",
-        "glass_strong": "rgba(255, 255, 255, 0.78)",
-        "glass_sidebar": "rgba(15, 23, 42, 0.72)",
-        "border": "rgba(255, 255, 255, 0.65)",
-        "border_soft": "rgba(148, 163, 184, 0.28)",
-        "text": "#0F172A",
-        "text_muted": "#64748B",
-        "text_on_dark": "#F1F5F9",
-        "plot_bg": "rgba(248, 250, 252, 0.45)",
-        "grid": "rgba(148, 163, 184, 0.2)",
-        "success": "#10B981",
-        "warning": "#F59E0B",
-        "danger": "#EF4444",
-        "low_mag": "#22C55E",
-        "med_mag": "#F59E0B",
-        "high_mag": "#EF4444",
-        "shadow": "0 8px 32px rgba(15, 23, 42, 0.08)",
-        "shadow_lg": "0 20px 50px rgba(15, 23, 42, 0.12)",
-    },
     "dark": {
-        "accent": "#60A5FA",
-        "accent_soft": "#93C5FD",
-        "accent_glow": "rgba(96, 165, 250, 0.22)",
-        "violet": "#A78BFA",
-        "navy": "#0B1120",
-        "navy_light": "#1E293B",
-        "slate": "#94A3B8",
-        "bg_start": "#0B1120",
-        "bg_mid": "#111827",
-        "bg_end": "#1E1B4B",
-        "glass": "rgba(255, 255, 255, 0.06)",
-        "glass_strong": "rgba(255, 255, 255, 0.10)",
-        "glass_sidebar": "rgba(8, 12, 24, 0.88)",
-        "border": "rgba(255, 255, 255, 0.12)",
-        "border_soft": "rgba(148, 163, 184, 0.18)",
-        "text": "#F1F5F9",
-        "text_muted": "#94A3B8",
-        "text_on_dark": "#F1F5F9",
-        "plot_bg": "rgba(15, 23, 42, 0.55)",
-        "grid": "rgba(148, 163, 184, 0.12)",
+        "brand": "#D04A02",
+        "brand_soft": "rgba(208, 74, 2, 0.15)",
+        "accent": "#D04A02",
+        "accent_soft": "#E87722",
+        "accent_glow": "rgba(208, 74, 2, 0.22)",
+        "violet": "#B45309",
+        "navy": "#1A1A1A",
+        "navy_light": "#2D2D2D",
+        "slate": "#A3A3A3",
+        "bg_start": "#141414",
+        "bg_mid": "#1A1A1A",
+        "bg_end": "#1F1F1F",
+        "glass": "rgba(255, 255, 255, 0.04)",
+        "glass_strong": "rgba(255, 255, 255, 0.08)",
+        "glass_sidebar": "rgba(20, 20, 20, 0.96)",
+        "border": "rgba(255, 255, 255, 0.10)",
+        "border_soft": "rgba(255, 255, 255, 0.06)",
+        "text": "#F5F5F5",
+        "text_muted": "#A3A3A3",
+        "text_on_dark": "#F5F5F5",
+        "plot_bg": "rgba(26, 26, 26, 0.6)",
+        "grid": "rgba(163, 163, 163, 0.12)",
         "success": "#34D399",
         "warning": "#FBBF24",
         "danger": "#F87171",
         "low_mag": "#4ADE80",
         "med_mag": "#FBBF24",
         "high_mag": "#F87171",
-        "shadow": "0 8px 32px rgba(0, 0, 0, 0.35)",
-        "shadow_lg": "0 20px 50px rgba(0, 0, 0, 0.45)",
+        "shadow": "0 4px 24px rgba(0, 0, 0, 0.35)",
+        "shadow_lg": "0 12px 40px rgba(0, 0, 0, 0.45)",
     },
 }
 
-# Default palette (dark-only product theme)
 COLORS = THEMES["dark"]
 DEFAULT_THEME = "dark"
 
+MAP_HEIGHT_DESKTOP = 520
+MAP_HEIGHT_MOBILE = 340
+
 
 def get_colors(theme: str = DEFAULT_THEME) -> dict[str, str]:
-    """Return the active color palette (dark theme)."""
+    """Return the active PwC executive dark palette."""
     return THEMES["dark"]
 
 
@@ -99,4 +74,13 @@ MAG_CATEGORY_LABELS = ["Minor", "Moderate", "Strong", "Severe"]
 
 APP_TITLE = "QuakePulse"
 APP_SUBTITLE = "Global Seismic Intelligence"
+APP_TAGLINE = "Executive seismic monitoring & risk analytics"
 DATA_SOURCE = "USGS Earthquake Hazards Program"
+
+NAV_SECTIONS = [
+    ("Overview", "Executive summary & trends"),
+    ("Map", "Geospatial event intelligence"),
+    ("Analytics", "Depth, magnitude & regional patterns"),
+    ("Alerts", "Threshold-based notifications"),
+    ("Data", "Event registry & export"),
+]
