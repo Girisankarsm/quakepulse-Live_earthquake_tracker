@@ -5,6 +5,7 @@ from quakepulse.data.analytics import (
     compute_kpis,
     enrich_dataframe,
     get_alerts,
+    sample_for_display,
 )
 from quakepulse.data.fetcher import fetch_earthquake_data
 from quakepulse.data.parser import earthquakes_to_df
@@ -16,4 +17,5 @@ __all__ = [
     "fetch_earthquake_data",
     "earthquakes_to_df",
     "get_alerts",
+    "sample_for_display",
 ]

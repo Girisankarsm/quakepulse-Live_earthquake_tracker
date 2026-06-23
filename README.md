@@ -1,25 +1,32 @@
 # QuakePulse — Global Seismic Intelligence Platform
 
+[![CI](https://github.com/Girisankarsm/quakepulse-Live_earthquake_tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/Girisankarsm/quakepulse-Live_earthquake_tracker/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![Streamlit](https://img.shields.io/badge/streamlit-1.39%2B-red.svg)](https://streamlit.io)
+
 Enterprise-grade live earthquake monitoring dashboard powered by USGS real-time feeds.
 
 **[Live Demo](https://quakepulse-liveearthquaketracker.streamlit.app/)**
 
 ## Overview
 
-QuakePulse is a professional seismic intelligence platform that transforms USGS earthquake data into actionable executive dashboards. Built with a modular architecture and PwC-inspired design language, it delivers real-time monitoring, geospatial analysis, and exportable event registries.
+QuakePulse transforms USGS earthquake data into a polished seismic intelligence platform — glass UI, executive KPIs, geospatial analytics, and exportable event registries. Built with modular architecture, automated tests, and CI.
 
 ## Features
 
 | Capability | Description |
 |------------|-------------|
-| **Live data pipeline** | USGS GeoJSON feeds with 60s cache and true auto-refresh |
-| **Executive KPIs** | Total events, magnitude stats, energy release, shallow-event ratio |
-| **Tabbed workspace** | Overview · Geospatial · Analytics · Alerts · Data Explorer |
-| **Advanced filters** | Magnitude, depth, location search, configurable alert threshold |
-| **Geospatial** | Clustered event map + density heatmap |
-| **Analytics** | Histograms, 3D plots, trend charts, regional rankings |
-| **Data export** | One-click CSV download from the event registry |
-| **Resilient fetch** | Request timeouts, typed errors, graceful degradation |
+| **Glass UI** | FAANG-inspired glassmorphism with light & dark themes |
+| **Live pipeline** | USGS GeoJSON feeds · 60s cache · true auto-refresh |
+| **Executive KPIs** | Events, magnitude, energy, shallow-event ratio |
+| **Tabbed workspace** | Overview · Map · Analytics · Alerts · Data |
+| **Smart sampling** | Handles 30-day feeds smoothly; M≥4.0 always preserved |
+| **Advanced filters** | Magnitude, depth, location search, alert threshold |
+| **Geospatial** | Clustered map + density heatmap |
+| **Analytics** | Histograms, 3D plots, trends, regional rankings |
+| **Data export** | One-click CSV download |
+| **CI/CD** | GitHub Actions on every push |
+| **Resilient fetch** | 15s timeouts, typed errors, graceful degradation |
 
 ## Architecture
 
@@ -27,19 +34,12 @@ QuakePulse is a professional seismic intelligence platform that transforms USGS 
 quakepulse/
 ├── app.py                 # Streamlit entry point
 ├── quakepulse/
-│   ├── config.py          # Constants, palette, feed URLs
-│   ├── data/
-│   │   ├── fetcher.py     # USGS API client
-│   │   ├── parser.py      # GeoJSON → DataFrame
-│   │   └── analytics.py   # KPIs, filters, alerts
-│   ├── viz/
-│   │   ├── maps.py        # Folium map builders
-│   │   ├── charts.py      # Plotly visualizations
-│   │   └── theme.py       # Enterprise chart styling
-│   └── ui/
-│       ├── styles.py      # Custom CSS
-│       └── components.py  # Reusable UI blocks
-└── tests/                 # Unit tests
+│   ├── config.py          # Themes, feeds, limits
+│   ├── data/              # fetcher · parser · analytics
+│   ├── viz/               # maps · charts · theme
+│   └── ui/                # glass CSS · components
+├── tests/                 # Unit tests (pytest)
+└── .github/workflows/     # CI pipeline
 ```
 
 ## Quick Start
@@ -63,6 +63,7 @@ pytest tests/ -v
 - **Maps:** Folium, streamlit-folium
 - **Charts:** Plotly
 - **Data:** Pandas, Requests
+- **CI:** GitHub Actions
 - **Source:** [USGS Earthquake API](https://earthquake.usgs.gov/fdsnws/event/1/)
 
 ## Configuration
@@ -72,13 +73,14 @@ Key settings in `quakepulse/config.py`:
 | Setting | Default | Purpose |
 |---------|---------|---------|
 | `CACHE_TTL_SECONDS` | 60 | Data cache lifetime |
-| `AUTO_REFRESH_SECONDS` | 60 | Dashboard auto-refresh interval |
+| `AUTO_REFRESH_SECONDS` | 60 | Auto-refresh interval |
+| `MAP_DISPLAY_LIMIT` | 2000 | Max map markers |
+| `ANIMATION_LIMIT` | 500 | Max animation frames |
 | `REQUEST_TIMEOUT_SECONDS` | 15 | USGS API timeout |
-| `DEFAULT_ALERT_THRESHOLD` | 5.0 | Default M alert level |
 
 ## Disclaimer
 
-For informational and analytical purposes only. Not intended for operational emergency response. Always refer to official government seismic agencies for safety-critical decisions.
+For informational and analytical purposes only. Not intended for operational emergency response.
 
 ## License
 

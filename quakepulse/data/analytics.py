@@ -118,3 +118,22 @@ def format_energy(joules: float) -> str:
     if joules >= 1e9:
         return f"{joules / 1e9:.2f} GJ"
     return f"{joules:,.0f} J"
+
+
+def sample_for_display(df: pd.DataFrame, limit: int = 1500) -> tuple[pd.DataFrame, bool]:
+    """
+    Downsample large datasets for map/chart rendering.
+    Always retains events at or above M4.0.
+    """
+    if df.empty or len(df) <= limit:
+        return df, False
+
+    strong = df[df["Magnitude"] >= 4.0]
+    remainder = df[df["Magnitude"] < 4.0]
+    slots = max(0, limit - len(strong))
+
+    if len(remainder) > slots:
+        remainder = remainder.sample(n=slots, random_state=42)
+
+    sampled = pd.concat([strong, remainder]).sort_values("Time").reset_index(drop=True)
+    return sampled, True

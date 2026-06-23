@@ -7,6 +7,8 @@ from quakepulse.ui.components import (
     render_footer,
     render_header,
     render_kpi_row,
+    render_sample_notice,
+    render_section_title,
     render_sidebar_controls,
     render_status_bar,
 )
@@ -18,6 +20,8 @@ __all__ = [
     "render_status_bar",
     "render_kpi_row",
     "render_executive_summary",
+    "render_sample_notice",
+    "render_section_title",
     "render_sidebar_controls",
     "render_alert_banner",
     "render_data_table",

@@ -8,6 +8,7 @@ from quakepulse.data.analytics import (
     enrich_dataframe,
     format_energy,
     get_alerts,
+    sample_for_display,
 )
 from quakepulse.data.parser import earthquakes_to_df
 from tests.conftest import SAMPLE_FEATURE
@@ -68,3 +69,24 @@ def test_get_alerts():
 def test_format_energy_scales():
     assert "J" in format_energy(500)
     assert "GJ" in format_energy(5e9)
+
+
+def test_sample_for_display_keeps_strong_events():
+    df = _sample_df()
+    extra = df.copy()
+    for i in range(20):
+        row = extra.iloc[0].copy()
+        row["Magnitude"] = 1.5
+        row["ID"] = f"weak_{i}"
+        extra = pd.concat([extra, row.to_frame().T], ignore_index=True)
+    sampled, was_sampled = sample_for_display(extra, limit=5)
+    assert was_sampled
+    assert (sampled["Magnitude"] >= 4.0).any()
+    assert len(sampled) <= 5
+
+
+def test_sample_for_display_noop_on_small():
+    df = _sample_df()
+    sampled, was_sampled = sample_for_display(df, limit=100)
+    assert not was_sampled
+    assert len(sampled) == len(df)
