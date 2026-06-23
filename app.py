@@ -78,8 +78,8 @@ def load_earthquake_data(url: str) -> tuple[list, str | None]:
 def main() -> None:
     configure_page()
     controls = render_sidebar_controls()
-    colors = get_colors(controls["theme"])
-    inject_custom_css(controls["theme"])
+    colors = get_colors()
+    inject_custom_css()
 
     if controls["auto_refresh"]:
         st_autorefresh(interval=AUTO_REFRESH_SECONDS * 1000, key="quakepulse_refresh")

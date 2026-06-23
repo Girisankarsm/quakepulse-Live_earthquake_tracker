@@ -119,7 +119,7 @@ def render_executive_summary(
 
 
 def render_section_title(title: str, subtitle: str = "", colors: dict[str, str] | None = None) -> None:
-    c = colors or get_colors("light")
+    c = colors or get_colors("dark")
     sub = (
         f'<span style="color:{c["text_muted"]};font-weight:400;font-size:0.88rem"> · {subtitle}</span>'
         if subtitle
@@ -135,11 +135,6 @@ def render_sample_notice(was_sampled: bool, total: int, shown: int) -> None:
 
 def render_sidebar_controls() -> dict:
     """Render sidebar and return user control values."""
-    st.sidebar.markdown("### Appearance")
-    theme = st.sidebar.radio("Theme", ["Light", "Dark"], horizontal=True, label_visibility="collapsed")
-    theme_key = theme.lower()
-
-    st.sidebar.divider()
     st.sidebar.markdown("### Controls")
     st.sidebar.caption("Filters apply instantly across all tabs.")
 
@@ -162,7 +157,6 @@ def render_sidebar_controls() -> dict:
     st.sidebar.caption(f"Source: **{DATA_SOURCE}** · every **{AUTO_REFRESH_SECONDS}s**")
 
     return {
-        "theme": theme_key,
         "timeframe": timeframe,
         "feed_url": USGS_FEEDS[timeframe],
         "mag_threshold": mag_threshold,

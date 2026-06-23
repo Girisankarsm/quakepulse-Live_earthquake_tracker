@@ -67,6 +67,6 @@ def apply_enterprise_theme(
     height: int | None = 420,
 ) -> go.Figure:
     """Apply glass dashboard styling to any Plotly figure."""
-    palette = colors or get_colors("light")
+    palette = colors or get_colors()
     fig.update_layout(**enterprise_layout(title, palette, height))
     return fig

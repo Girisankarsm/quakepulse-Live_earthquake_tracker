@@ -1,4 +1,4 @@
-"""FAANG-inspired glassmorphism UI with light/dark themes."""
+"""FAANG-inspired glassmorphism UI — dark theme."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ import streamlit as st
 from quakepulse.config import get_colors
 
 
-def inject_custom_css(theme: str = "light") -> None:
-    """Inject global glass UI styles for the active theme."""
+def inject_custom_css(theme: str = "dark") -> None:
+    """Inject global glass UI styles."""
     c = get_colors(theme)
     st.markdown(
         f"""

@@ -11,7 +11,7 @@ from quakepulse.viz.theme import apply_enterprise_theme
 
 
 def _c(colors: dict[str, str] | None) -> dict[str, str]:
-    return colors or get_colors("light")
+    return colors or get_colors()
 
 
 def magnitude_histogram(df: pd.DataFrame, colors: dict[str, str] | None = None) -> go.Figure:

@@ -19,7 +19,7 @@ def _magnitude_color(magnitude: float, colors: dict[str, str]) -> str:
 
 def create_cluster_map(df: pd.DataFrame, colors: dict[str, str] | None = None) -> folium.Map:
     """Build an interactive clustered earthquake map."""
-    c = colors or get_colors("light")
+    c = colors or get_colors()
     m = folium.Map(location=[20, 0], zoom_start=2, tiles="CartoDB positron", control_scale=True)
     marker_cluster = MarkerCluster(name="Events").add_to(m)
 
@@ -53,7 +53,7 @@ def create_cluster_map(df: pd.DataFrame, colors: dict[str, str] | None = None) -
 
 def create_heatmap(df: pd.DataFrame, colors: dict[str, str] | None = None) -> folium.Map:
     """Build a global seismic density heatmap."""
-    c = colors or get_colors("light")
+    c = colors or get_colors()
     m = folium.Map(location=[20, 0], zoom_start=2, tiles="CartoDB positron", control_scale=True)
 
     if not df.empty:

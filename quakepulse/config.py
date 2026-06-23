@@ -81,13 +81,14 @@ THEMES: dict[str, dict[str, str]] = {
     },
 }
 
-# Back-compat default palette
-COLORS = THEMES["light"]
+# Default palette (dark-only product theme)
+COLORS = THEMES["dark"]
+DEFAULT_THEME = "dark"
 
 
-def get_colors(theme: str = "light") -> dict[str, str]:
-    """Return the color palette for the active theme."""
-    return THEMES.get(theme, THEMES["light"])
+def get_colors(theme: str = DEFAULT_THEME) -> dict[str, str]:
+    """Return the active color palette (dark theme)."""
+    return THEMES["dark"]
 
 
 MAG_BINS = [0, 2.5, 5, 10]
