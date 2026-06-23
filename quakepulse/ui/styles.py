@@ -106,13 +106,7 @@ def inject_custom_css(theme: str = "dark") -> None:
                 0%, 100% {{ opacity: 1; }} 50% {{ opacity: 0.45; }}
             }}
 
-            /* ── KPI responsive grid ── */
-            .qp-kpi-grid {{
-                display: grid;
-                grid-template-columns: repeat(5, 1fr);
-                gap: 0.75rem;
-                margin-bottom: 1.25rem;
-            }}
+            /* ── KPI cards (per-column on desktop, stack on mobile) ── */
             .qp-kpi-card {{
                 background: {c['glass_strong']};
                 border: 1px solid {c['border']};
@@ -120,6 +114,7 @@ def inject_custom_css(theme: str = "dark") -> None:
                 border-radius: 8px;
                 padding: 1rem 1.1rem;
                 min-height: 100px;
+                margin-bottom: 0.75rem;
             }}
             .qp-kpi-label {{
                 color: {c['text_muted']}; font-size: 0.68rem; font-weight: 700;
@@ -216,13 +211,12 @@ def inject_custom_css(theme: str = "dark") -> None:
 
             /* ── Mobile: stack columns, compact layout ── */
             @media (max-width: 1024px) {{
-                .qp-kpi-grid {{ grid-template-columns: repeat(3, 1fr); }}
+                .qp-kpi-value {{ font-size: 1.15rem; }}
             }}
             @media (max-width: 768px) {{
                 .block-container {{ padding: 0.75rem 0.85rem 1.5rem; }}
                 .qp-header {{ padding: 1.1rem 1.15rem; }}
                 .qp-header h1 {{ font-size: 1.2rem; }}
-                .qp-kpi-grid {{ grid-template-columns: repeat(2, 1fr); gap: 0.55rem; }}
                 .qp-kpi-value {{ font-size: 1.15rem; }}
                 .qp-chip-hide-mobile {{ display: none !important; }}
                 div[data-testid="stHorizontalBlock"] {{ flex-wrap: wrap !important; gap: 0.5rem !important; }}
@@ -232,7 +226,6 @@ def inject_custom_css(theme: str = "dark") -> None:
                 .stTabs [data-baseweb="tab"] {{ padding: 0.45rem 0.75rem; font-size: 0.78rem; }}
             }}
             @media (max-width: 480px) {{
-                .qp-kpi-grid {{ grid-template-columns: 1fr; }}
                 .qp-brand {{ flex-direction: row; align-items: center; }}
                 .qp-logo {{ width: 40px; height: 40px; font-size: 1.1rem; }}
             }}

@@ -78,25 +78,27 @@ def render_status_bar(
 
 
 def render_kpi_row(kpis: EarthquakeKPIs) -> None:
-    """Responsive KPI grid — stacks on mobile without Streamlit columns."""
+    """KPI row — one card per column (avoids Streamlit HTML block escaping)."""
     metrics = [
         ("Total Events", f"{kpis.total_events:,}", "Selected window"),
         ("Avg Magnitude", f"{kpis.average_magnitude:.2f}", "Mean value"),
-        ("Largest Event", f"M {kpis.largest_magnitude:.1f}", html.escape(kpis.largest_place[:48])),
-        ("Significant", f"{kpis.significant_events:,}", "Events ≥ M4.5"),
+        ("Largest Event", f"M {kpis.largest_magnitude:.1f}", kpis.largest_place[:48]),
+        ("Significant", f"{kpis.significant_events:,}", "Events >= M4.5"),
         ("Energy", format_energy(kpis.total_energy_joules), f"{kpis.shallow_events_pct:.0f}% shallow"),
     ]
-    cards = "".join(
-        f"""
-        <div class="qp-kpi-card">
-            <div class="qp-kpi-label">{label}</div>
-            <div class="qp-kpi-value">{value}</div>
-            <div class="qp-kpi-sub">{sub}</div>
-        </div>
-        """
-        for label, value, sub in metrics
-    )
-    st.markdown(f'<div class="qp-kpi-grid">{cards}</div>', unsafe_allow_html=True)
+    cols = st.columns(5, gap="small")
+    for col, (label, value, sub) in zip(cols, metrics):
+        with col:
+            st.markdown(
+                f"""
+                <div class="qp-kpi-card">
+                    <div class="qp-kpi-label">{html.escape(label)}</div>
+                    <div class="qp-kpi-value">{html.escape(value)}</div>
+                    <div class="qp-kpi-sub">{html.escape(sub)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
 
 def render_executive_summary(
