@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# IDE & OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# Exported artifacts
+live_earthquake_*.html
+
+# Test & coverage
+.pytest_cache/
+.coverage
+htmlcov/
