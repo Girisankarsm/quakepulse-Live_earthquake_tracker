@@ -5,6 +5,7 @@ PwC-style executive dashboard · desktop & mobile web app.
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -18,7 +19,6 @@ from quakepulse.config import (
     CACHE_TTL_SECONDS,
     CHART_SAMPLE_LIMIT,
     MAP_DISPLAY_LIMIT,
-    MAP_HEIGHT_DESKTOP,
     MAP_HEIGHT_MOBILE,
     get_colors,
 )
@@ -44,6 +44,12 @@ from quakepulse.ui.components import (
     render_status_bar,
     render_topbar,
     render_zone_label,
+)
+from quakepulse.ui.loading import (
+    render_branded_loader,
+    render_loaded_wrapper_end,
+    render_loaded_wrapper_start,
+    render_skeleton_kpis,
 )
 from quakepulse.ui.styles import inject_custom_css
 from quakepulse.viz.charts import (
@@ -78,9 +84,11 @@ def load_earthquake_data(url: str) -> tuple[list, str | None]:
         return [], str(exc)
 
 
-def _map_height() -> int:
-    """Shorter maps on narrow viewports (CSS stacks columns on mobile)."""
-    return MAP_HEIGHT_MOBILE
+def _show_loader(load_slot: st.empty, step: int, with_skeleton: bool = True) -> None:
+    with load_slot.container():
+        render_branded_loader(step=step)
+        if with_skeleton:
+            render_skeleton_kpis()
 
 
 def main() -> None:
@@ -95,9 +103,65 @@ def main() -> None:
     render_topbar()
     render_header()
 
-    with st.spinner("Loading USGS feed…"):
+    first_load = not st.session_state.get("qp_ready", False)
+    load_slot = st.empty()
+
+    if first_load:
+        _show_loader(load_slot, 0)
+    elif controls["auto_refresh"]:
+        load_slot.markdown(
+            '<div class="qp-refresh-badge"><span class="qp-refresh-spin"></span> Syncing feed</div>',
+            unsafe_allow_html=True,
+        )
+
+    status_ctx = (
+        st.status("Initializing seismic intelligence platform…", expanded=True)
+        if first_load
+        else nullcontext()
+    )
+
+    with status_ctx as status:
+        if first_load and status is not None:
+            status.write("Connecting to USGS seismic feed…")
+        _show_loader(load_slot, 0, first_load)
+
         features, error = load_earthquake_data(controls["feed_url"])
 
+        if first_load and status is not None:
+            if error:
+                status.update(label="Connection issue", state="error")
+            else:
+                status.write("Parsing earthquake events…")
+        if first_load and not error:
+            _show_loader(load_slot, 1)
+
+        raw_df = earthquakes_to_df(features)
+        df = enrich_dataframe(raw_df)
+        df = apply_filters(
+            df,
+            min_magnitude=controls["min_magnitude"],
+            max_depth=controls["max_depth"],
+            place_query=controls["place_query"],
+        )
+
+        if first_load and status is not None and not error:
+            status.write("Computing analytics & KPIs…")
+        if first_load and not error:
+            _show_loader(load_slot, 2)
+
+        kpis = compute_kpis(df)
+        alerts = get_alerts(df, controls["mag_threshold"])
+        map_df, map_sampled = sample_for_display(df, MAP_DISPLAY_LIMIT)
+        chart_df, chart_sampled = sample_for_display(df, CHART_SAMPLE_LIMIT)
+        anim_df, _ = sample_for_display(df, ANIMATION_LIMIT)
+
+        if first_load and status is not None and not error:
+            status.write("Rendering dashboard…")
+            _show_loader(load_slot, 3, with_skeleton=False)
+            status.update(label="Dashboard ready", state="complete", expanded=False)
+
+    load_slot.empty()
+    st.session_state["qp_ready"] = True
     last_updated = datetime.now(timezone.utc)
 
     if error:
@@ -106,28 +170,10 @@ def main() -> None:
         render_footer()
         return
 
-    raw_df = earthquakes_to_df(features)
-    df = enrich_dataframe(raw_df)
-    df = apply_filters(
-        df,
-        min_magnitude=controls["min_magnitude"],
-        max_depth=controls["max_depth"],
-        place_query=controls["place_query"],
-    )
-
-    kpis = compute_kpis(df)
-    alerts = get_alerts(df, controls["mag_threshold"])
-    map_df, map_sampled = sample_for_display(df, MAP_DISPLAY_LIMIT)
-    chart_df, chart_sampled = sample_for_display(df, CHART_SAMPLE_LIMIT)
-    anim_df, _ = sample_for_display(df, ANIMATION_LIMIT)
-    map_h = _map_height()
-
-    # ── Zone 1: Executive layer ──
+    render_loaded_wrapper_start()
     render_status_bar(last_updated, kpis.total_events, controls["timeframe"])
     render_kpi_row(kpis)
     render_executive_summary(kpis, controls["timeframe"], len(alerts), colors)
-
-    # ── Zone 2: Analysis workspace ──
     render_zone_label("Analysis workspace")
 
     tab_overview, tab_map, tab_analytics, tab_alerts, tab_data = st.tabs(
@@ -136,21 +182,18 @@ def main() -> None:
 
     with tab_overview:
         _render_overview_tab(df, chart_df, chart_sampled, colors)
-
     with tab_map:
-        _render_map_tab(df, map_df, map_sampled, colors, map_h)
-
+        _render_map_tab(df, map_df, map_sampled, colors, MAP_HEIGHT_MOBILE)
     with tab_analytics:
         _render_analytics_tab(df, chart_df, chart_sampled, anim_df, colors)
-
     with tab_alerts:
         render_section_title("Alert monitor", f"M ≥ {controls['mag_threshold']:.1f}", colors)
         render_alert_banner(alerts, colors)
-
     with tab_data:
         render_section_title("Event registry", "Export · full record set", colors)
         render_data_table(df)
 
+    render_loaded_wrapper_end()
     render_footer()
 
 
@@ -164,15 +207,14 @@ def _render_overview_tab(
     if df.empty:
         st.warning("No events for current filters.")
         return
-    with st.container():
-        render_section_title("Activity trends", "Hourly patterns & magnitude spread", colors)
-        render_sample_notice(chart_sampled, len(df), len(chart_df))
-        c1, c2 = st.columns(2, gap="medium")
-        with c1:
-            st.plotly_chart(magnitude_trend_chart(chart_df, colors), use_container_width=True)
-        with c2:
-            st.plotly_chart(magnitude_histogram(chart_df, colors), use_container_width=True)
-        st.plotly_chart(cumulative_energy_chart(chart_df, colors), use_container_width=True)
+    render_section_title("Activity trends", "Hourly patterns & magnitude spread", colors)
+    render_sample_notice(chart_sampled, len(df), len(chart_df))
+    c1, c2 = st.columns(2, gap="medium")
+    with c1:
+        st.plotly_chart(magnitude_trend_chart(chart_df, colors), use_container_width=True)
+    with c2:
+        st.plotly_chart(magnitude_histogram(chart_df, colors), use_container_width=True)
+    st.plotly_chart(cumulative_energy_chart(chart_df, colors), use_container_width=True)
 
 
 @st.fragment

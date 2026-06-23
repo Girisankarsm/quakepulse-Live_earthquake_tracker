@@ -209,6 +209,146 @@ def inject_custom_css(theme: str = "dark") -> None:
             }}
             .stAlert {{ border-radius: 6px !important; }}
 
+            /* ── Branded loader ── */
+            .qp-loader {{
+                text-align: center; padding: 2.5rem 1.5rem 2rem;
+                margin: 1rem 0 1.5rem;
+                background: {c['glass_strong']};
+                border: 1px solid {c['border']};
+                border-radius: 12px;
+                position: relative;
+                overflow: hidden;
+            }}
+            .qp-loader::before {{
+                content: "";
+                position: absolute; inset: 0;
+                background: linear-gradient(90deg, transparent, {c['brand_soft']}, transparent);
+                animation: qp-shimmer-sweep 2.2s ease-in-out infinite;
+                opacity: 0.35;
+            }}
+            .qp-loader-ring {{
+                width: 72px; height: 72px; margin: 0 auto 1rem;
+                border: 3px solid {c['border']};
+                border-top-color: {c['brand']};
+                border-radius: 50%;
+                animation: qp-spin 0.9s linear infinite;
+            }}
+            .qp-loader-core {{
+                font-size: 1.5rem; margin-top: -3.4rem;
+                margin-bottom: 2.2rem; position: relative; z-index: 1;
+            }}
+            .qp-loader-title {{
+                color: {c['text']}; font-size: 1.1rem; font-weight: 700;
+                margin: 0 0 0.35rem; position: relative; z-index: 1;
+            }}
+            .qp-loader-msg {{
+                color: {c['text_muted']}; font-size: 0.88rem;
+                margin: 0 0 1rem; position: relative; z-index: 1;
+            }}
+            .qp-loader-bar {{
+                height: 4px; background: {c['border']};
+                border-radius: 999px; overflow: hidden;
+                max-width: 320px; margin: 0 auto 1.25rem;
+                position: relative; z-index: 1;
+            }}
+            .qp-loader-fill {{
+                height: 100%; background: linear-gradient(90deg, {c['brand']}, {c['accent_soft']});
+                border-radius: 999px;
+                transition: width 0.45s ease;
+            }}
+            .qp-load-steps {{
+                display: flex; flex-wrap: wrap; justify-content: center;
+                gap: 0.5rem 1rem; position: relative; z-index: 1;
+            }}
+            .qp-load-step {{
+                font-size: 0.72rem; color: {c['text_muted']};
+                display: flex; align-items: center; gap: 0.35rem;
+                opacity: 0.45; transition: opacity 0.3s ease;
+            }}
+            .qp-load-step-active {{ color: {c['text']}; opacity: 1; font-weight: 600; }}
+            .qp-load-step-dot {{
+                width: 6px; height: 6px; border-radius: 50%;
+                background: {c['border']};
+            }}
+            .qp-load-step-active .qp-load-step-dot {{
+                background: {c['brand']};
+                box-shadow: 0 0 8px {c['brand_soft']};
+            }}
+
+            /* ── Skeleton shimmer ── */
+            .qp-skeleton {{
+                background: {c['glass_strong']};
+                border: 1px solid {c['border']};
+                border-radius: 8px;
+                position: relative; overflow: hidden;
+            }}
+            .qp-skeleton::after {{
+                content: "";
+                position: absolute; inset: 0;
+                background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+                animation: qp-shimmer-sweep 1.6s ease-in-out infinite;
+            }}
+            .qp-skeleton-kpi {{
+                min-height: 100px; padding: 1rem;
+                margin-bottom: 0.75rem;
+            }}
+            .qp-skeleton-chart {{
+                margin-bottom: 1rem; border-radius: 8px;
+            }}
+            .qp-skel-line {{
+                height: 10px; border-radius: 4px;
+                background: {c['border']}; margin-bottom: 0.55rem;
+            }}
+            .qp-skel-sm {{ width: 45%; height: 8px; }}
+            .qp-skel-lg {{ width: 70%; height: 18px; margin: 0.5rem 0; }}
+            .qp-skel-md {{ width: 55%; height: 8px; }}
+
+            @keyframes qp-spin {{
+                to {{ transform: rotate(360deg); }}
+            }}
+            @keyframes qp-shimmer-sweep {{
+                0% {{ transform: translateX(-100%); }}
+                100% {{ transform: translateX(100%); }}
+            }}
+
+            /* ── Content fade-in ── */
+            .qp-loaded {{
+                animation: qp-fade-up 0.55s ease-out both;
+            }}
+            @keyframes qp-fade-up {{
+                from {{ opacity: 0; transform: translateY(10px); }}
+                to {{ opacity: 1; transform: translateY(0); }}
+            }}
+
+            /* ── Background refresh badge ── */
+            .qp-refresh-badge {{
+                display: inline-flex; align-items: center; gap: 0.4rem;
+                font-size: 0.72rem; color: {c['text_muted']};
+                padding: 0.25rem 0.6rem; border-radius: 4px;
+                background: {c['glass']}; border: 1px solid {c['border']};
+                margin-bottom: 0.5rem;
+            }}
+            .qp-refresh-spin {{
+                width: 10px; height: 10px;
+                border: 2px solid {c['border']};
+                border-top-color: {c['brand']};
+                border-radius: 50%;
+                animation: qp-spin 0.8s linear infinite;
+            }}
+
+            /* ── Streamlit native spinner override ── */
+            [data-testid="stSpinner"] {{
+                border-color: {c['brand']} !important;
+            }}
+            [data-testid="stSpinner"] > div {{
+                border-top-color: {c['brand']} !important;
+            }}
+            div[data-testid="stStatusWidget"] {{
+                background: {c['glass_strong']} !important;
+                border: 1px solid {c['border']} !important;
+                border-radius: 8px !important;
+            }}
+
             /* ── Mobile: stack columns, compact layout ── */
             @media (max-width: 1024px) {{
                 .qp-kpi-value {{ font-size: 1.15rem; }}
