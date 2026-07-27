@@ -49,9 +49,9 @@ export function magClass(m) {
 }
 
 export function magColor(m) {
-  if (m < 2.5) return '#3ecf8e';
-  if (m < 5) return '#e8b339';
-  return '#ef6b6b';
+  if (m < 2.5) return '#6bbf9a';
+  if (m < 5) return '#d4b56a';
+  return '#e08a8a';
 }
 
 export function toCsv(events) {

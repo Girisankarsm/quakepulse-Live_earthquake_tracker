@@ -38,7 +38,7 @@ export const api = {
   predict: (params) => request('/ml/predict', params),
   model: () => request('/ml/model'),
   news: (params) => request('/news', params),
-  train: async (body = { days: 30, minMagnitude: 2.5 }) => {
+  train: async (body = { days: 90, minMagnitude: 2.5, epochs: 45 }) => {
     const res = await fetch(`${BASE}/ml/train`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -46,6 +46,17 @@ export const api = {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.message || 'Training failed');
+    return data;
+  },
+  autoTrainStatus: () => request('/ml/auto-train'),
+  autoTrainRun: async (body = {}) => {
+    const res = await fetch(`${BASE}/ml/auto-train/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ force: true, ...body }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || 'Auto-train failed');
     return data;
   },
 };

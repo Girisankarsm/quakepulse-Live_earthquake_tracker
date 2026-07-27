@@ -134,7 +134,7 @@ export function useQuakeData() {
         const synced = Date.now();
         setLastSyncedAt(synced);
         if (f.autoRefresh) {
-          setNextRefreshAt(synced + (Number(f.refreshSeconds) || 30) * 1000);
+          setNextRefreshAt(synced + (Number(f.refreshSeconds) || 15) * 1000);
         } else {
           setNextRefreshAt(null);
         }
@@ -175,7 +175,7 @@ export function useQuakeData() {
       return undefined;
     }
 
-    const intervalMs = Math.max(10, Number(filters.refreshSeconds) || 30) * 1000;
+    const intervalMs = Math.max(10, Number(filters.refreshSeconds) || 15) * 1000;
     let timer;
 
     const schedule = () => {
@@ -232,7 +232,7 @@ export function useQuakeData() {
     }));
   };
 
-  const trainModel = async (body = { days: 30, minMagnitude: 2.5 }) => {
+  const trainModel = async (body = { days: 90, minMagnitude: 2.5 }) => {
     setTraining(true);
     try {
       const result = await api.train(body);
