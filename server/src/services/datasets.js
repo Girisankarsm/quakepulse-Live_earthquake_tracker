@@ -1,38 +1,70 @@
 /**
- * Multi-source seismic dataset download & merge.
- * Chunked USGS FDSN + EMSC for long windows; USGS live feeds; significant events.
+ * Multi-source seismic catalog download, compact storage, and stats.
+ *
+ * Storage format (v2):
+ *   catalog.ndjson.gz  — one compact row per event (streamable, ~3–5× smaller)
+ *   catalog.meta.json  — schema, window, sources, depth/mag histograms
+ *
+ * Legacy training_events.json still readable for migration.
  */
 
-import fs from 'fs/promises';
+import fs from 'fs';
+import fsp from 'fs/promises';
 import path from 'path';
+import zlib from 'zlib';
+import { pipeline } from 'stream/promises';
+import { createReadStream, createWriteStream } from 'fs';
+import { createInterface } from 'readline';
 import { fileURLToPath } from 'url';
 import { DATA_SOURCES, DATASET_DIR } from '../config.js';
-import { fetchJson, FetchError } from '../utils/http.js';
+import { fetchJson } from '../utils/http.js';
 import { parseFeatures, enrichEvents } from './parser.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_DIR = path.resolve(__dirname, '../../data');
-const CHUNK_DAYS = 10;
+const CHUNK_DAYS = 7;
+const SCHEMA_VERSION = 2;
+
+/** Compact row: [id, mag, depth, lat, lon, timeMs, place, source] */
+const COLS = ['id', 'magnitude', 'depth', 'latitude', 'longitude', 'timeMs', 'place', 'source'];
 
 function dataDir() {
   return process.env.DATASET_DIR || DATASET_DIR || DEFAULT_DIR;
 }
 
+function catalogPaths() {
+  const dir = dataDir();
+  return {
+    dir,
+    ndjsonGz: path.join(dir, 'catalog.ndjson.gz'),
+    meta: path.join(dir, 'catalog.meta.json'),
+    legacyJson: path.join(dir, 'training_events.json'),
+    legacyMeta: path.join(dir, 'training_meta.json'),
+  };
+}
+
 /**
- * Download and merge major free earthquake catalogs for training.
+ * Download and merge major free earthquake catalogs.
  * @param {{ days?: number, minMagnitude?: number, persist?: boolean }} opts
  */
 export async function downloadTrainingDataset(opts = {}) {
-  const days = Math.min(Math.max(opts.days ?? 90, 7), 120);
-  const minMagnitude = opts.minMagnitude ?? 2.5;
+  const days = Math.min(Math.max(opts.days ?? 120, 7), 180);
+  const minMagnitude = opts.minMagnitude ?? 2.0;
   const end = new Date();
   const start = new Date(end.getTime() - days * 86_400_000);
 
-  console.log(`[datasets] window ${days}d · minM ${minMagnitude} · chunk ${CHUNK_DAYS}d`);
+  console.log(`[datasets] window ${days}d · minM ${minMagnitude} · chunk ${CHUNK_DAYS}d · schema v${SCHEMA_VERSION}`);
 
   const jobs = [
     { id: 'usgs-fdsn', run: () => fetchUsgsFdsnChunked(start, end, minMagnitude) },
-    { id: 'usgs-feed-month', run: () => fetchUsgsGeoJson(DATA_SOURCES.usgsFeedMonth, minMagnitude, 'usgs-feed') },
+    {
+      id: 'usgs-fdsn-m45',
+      run: () => fetchUsgsFdsnChunked(start, end, Math.max(minMagnitude, 4.5)),
+    },
+    {
+      id: 'usgs-feed-month',
+      run: () => fetchUsgsGeoJson(DATA_SOURCES.usgsFeedMonth, minMagnitude, 'usgs-feed'),
+    },
     {
       id: 'usgs-m25-month',
       run: () =>
@@ -44,14 +76,13 @@ export async function downloadTrainingDataset(opts = {}) {
         fetchUsgsGeoJson(DATA_SOURCES.usgsM45Month, Math.max(minMagnitude, 4.5), 'usgs-m45'),
     },
     { id: 'usgs-significant', run: () => fetchUsgsSignificantFeed() },
-    { id: 'emsc', run: () => fetchEmscChunked(start, end, Math.max(minMagnitude, 2.5)) },
+    { id: 'emsc', run: () => fetchEmscChunked(start, end, Math.max(minMagnitude, 2.0)) },
     { id: 'scrape-usgs', run: () => scrapeUsgsSignificant() },
   ];
 
   const sources = {};
   const all = [];
 
-  // Sequential for FDSN rate limits; parallel within is fine via Promise.allSettled
   const results = await Promise.allSettled(
     jobs.map(async (job) => {
       const events = await job.run();
@@ -72,17 +103,24 @@ export async function downloadTrainingDataset(opts = {}) {
     }
   }
 
+  // Merge with existing catalog for deeper history
+  const prior = await loadPersistedDataset().catch(() => null);
+  if (prior?.events?.length) {
+    all.push(...prior.events);
+    sources['prior-catalog'] = { ok: true, count: prior.events.length };
+  }
+
   const merged = dedupeEvents(all).filter((e) => e.magnitude >= minMagnitude);
   const events = enrichEvents(merged).sort((a, b) => a.timeMs - b.timeMs);
 
-  const meta = {
+  const meta = buildCatalogMeta(events, {
     downloadedAt: new Date().toISOString(),
     window: { start: start.toISOString(), end: end.toISOString(), days },
     minMagnitude,
     sources,
     totalRaw: all.length,
     totalMerged: events.length,
-  };
+  });
 
   if (opts.persist !== false) {
     await persistDataset(events, meta);
@@ -92,45 +130,237 @@ export async function downloadTrainingDataset(opts = {}) {
 }
 
 export async function loadPersistedDataset() {
-  const dir = dataDir();
+  const paths = catalogPaths();
+
+  // Prefer compact NDJSON.gz
+  if (fs.existsSync(paths.ndjsonGz) && fs.existsSync(paths.meta)) {
+    const meta = JSON.parse(await fsp.readFile(paths.meta, 'utf8'));
+    const events = await readNdjsonGz(paths.ndjsonGz);
+    return { events: enrichEvents(events), meta, fromDisk: true, format: 'ndjson.gz' };
+  }
+
+  // Legacy JSON array
   try {
     const [eventsRaw, metaRaw] = await Promise.all([
-      fs.readFile(path.join(dir, 'training_events.json'), 'utf8'),
-      fs.readFile(path.join(dir, 'training_meta.json'), 'utf8'),
+      fsp.readFile(paths.legacyJson, 'utf8'),
+      fsp.readFile(paths.legacyMeta, 'utf8'),
     ]);
-    return {
-      events: enrichEvents(JSON.parse(eventsRaw)),
-      meta: JSON.parse(metaRaw),
-      fromDisk: true,
-    };
+    const events = enrichEvents(JSON.parse(eventsRaw));
+    const meta = buildCatalogMeta(events, JSON.parse(metaRaw));
+    // Migrate quietly
+    await persistDataset(events, meta).catch(() => {});
+    return { events, meta, fromDisk: true, format: 'legacy-json' };
   } catch {
     return null;
   }
 }
 
+export async function getDatasetStats() {
+  const loaded = await loadPersistedDataset();
+  if (!loaded) {
+    return { loaded: false, format: null, count: 0 };
+  }
+  const paths = catalogPaths();
+  let bytes = 0;
+  try {
+    const st = await fsp.stat(paths.ndjsonGz);
+    bytes = st.size;
+  } catch {
+    try {
+      const st = await fsp.stat(paths.legacyJson);
+      bytes = st.size;
+    } catch {
+      bytes = 0;
+    }
+  }
+
+  const sample = loaded.events
+    .slice(-8)
+    .reverse()
+    .map((e) => ({
+      id: e.id,
+      magnitude: e.magnitude,
+      depth: e.depth,
+      place: e.place,
+      time: e.time,
+      latitude: e.latitude,
+      longitude: e.longitude,
+      source: e.source || null,
+      region: e.region,
+    }));
+
+  return {
+    loaded: true,
+    format: loaded.format || 'ndjson.gz',
+    schemaVersion: loaded.meta?.schemaVersion || SCHEMA_VERSION,
+    count: loaded.events.length,
+    bytes,
+    bytesLabel: formatBytes(bytes),
+    downloadedAt: loaded.meta?.downloadedAt || null,
+    window: loaded.meta?.window || null,
+    minMagnitude: loaded.meta?.minMagnitude ?? null,
+    sources: loaded.meta?.sources || {},
+    depth: loaded.meta?.depth || null,
+    magnitude: loaded.meta?.magnitude || null,
+    geography: loaded.meta?.geography || null,
+    sample,
+  };
+}
+
+export function buildCatalogMeta(events, base = {}) {
+  const depthBins = { '0-10': 0, '10-70': 0, '70-300': 0, '300+': 0 };
+  const magBins = { '0-2': 0, '2-3': 0, '3-4': 0, '4-5': 0, '5-6': 0, '6+': 0 };
+  const bySource = {};
+  let minLat = 90;
+  let maxLat = -90;
+  let minLon = 180;
+  let maxLon = -180;
+  let energy = 0;
+
+  for (const e of events) {
+    const d = e.depth ?? 0;
+    if (d < 10) depthBins['0-10'] += 1;
+    else if (d < 70) depthBins['10-70'] += 1;
+    else if (d < 300) depthBins['70-300'] += 1;
+    else depthBins['300+'] += 1;
+
+    const m = e.magnitude ?? 0;
+    if (m < 2) magBins['0-2'] += 1;
+    else if (m < 3) magBins['2-3'] += 1;
+    else if (m < 4) magBins['3-4'] += 1;
+    else if (m < 5) magBins['4-5'] += 1;
+    else if (m < 6) magBins['5-6'] += 1;
+    else magBins['6+'] += 1;
+
+    const src = e.source || 'unknown';
+    bySource[src] = (bySource[src] || 0) + 1;
+
+    if (Number.isFinite(e.latitude)) {
+      minLat = Math.min(minLat, e.latitude);
+      maxLat = Math.max(maxLat, e.latitude);
+    }
+    if (Number.isFinite(e.longitude)) {
+      minLon = Math.min(minLon, e.longitude);
+      maxLon = Math.max(maxLon, e.longitude);
+    }
+    energy += e.energyJ || 10 ** (1.5 * Math.max(0, m) + 4.8);
+  }
+
+  const times = events.map((e) => e.timeMs).filter(Number.isFinite);
+  return {
+    ...base,
+    schemaVersion: SCHEMA_VERSION,
+    columns: COLS,
+    totalMerged: events.length,
+    depth: {
+      bins: depthBins,
+      avgKm: events.length
+        ? round(events.reduce((s, e) => s + (e.depth || 0), 0) / events.length, 1)
+        : 0,
+      medianKm: median(events.map((e) => e.depth || 0)),
+      shallowPct: events.length
+        ? round((events.filter((e) => (e.depth || 0) < 70).length / events.length) * 100, 1)
+        : 0,
+    },
+    magnitude: {
+      bins: magBins,
+      avg: events.length
+        ? round(events.reduce((s, e) => s + e.magnitude, 0) / events.length, 2)
+        : 0,
+      max: events.length ? round(Math.max(...events.map((e) => e.magnitude)), 1) : 0,
+      m4Plus: events.filter((e) => e.magnitude >= 4).length,
+      m5Plus: events.filter((e) => e.magnitude >= 5).length,
+      m6Plus: events.filter((e) => e.magnitude >= 6).length,
+    },
+    geography: {
+      lat: [round(minLat, 2), round(maxLat, 2)],
+      lon: [round(minLon, 2), round(maxLon, 2)],
+    },
+    time: times.length
+      ? {
+          first: new Date(Math.min(...times)).toISOString(),
+          last: new Date(Math.max(...times)).toISOString(),
+        }
+      : null,
+    bySource,
+    totalEnergyJ: energy,
+  };
+}
+
 async function persistDataset(events, meta) {
-  const dir = dataDir();
-  await fs.mkdir(dir, { recursive: true });
-  const lean = events.map((e) => ({
-    id: e.id,
-    magnitude: e.magnitude,
-    depth: e.depth,
-    place: e.place,
-    time: e.time,
-    timeMs: e.timeMs,
-    latitude: e.latitude,
-    longitude: e.longitude,
-    status: e.status,
-    type: e.type,
-    url: e.url,
-    felt: e.felt,
-    tsunami: e.tsunami,
-    sig: e.sig,
-    alert: e.alert,
-    source: e.source || null,
-  }));
-  await fs.writeFile(path.join(dir, 'training_events.json'), JSON.stringify(lean));
-  await fs.writeFile(path.join(dir, 'training_meta.json'), JSON.stringify(meta, null, 2));
+  const paths = catalogPaths();
+  await fsp.mkdir(paths.dir, { recursive: true });
+
+  // Compact NDJSON.gz — one array row per line
+  const tmp = `${paths.ndjsonGz}.tmp`;
+  await pipeline(
+    async function* () {
+      for (const e of events) {
+        const row = [
+          e.id,
+          round(e.magnitude, 3),
+          round(e.depth ?? 0, 2),
+          round(e.latitude, 4),
+          round(e.longitude, 4),
+          e.timeMs,
+          e.place || '',
+          e.source || '',
+        ];
+        yield `${JSON.stringify(row)}\n`;
+      }
+    },
+    zlib.createGzip({ level: 6 }),
+    createWriteStream(tmp),
+  );
+  await fsp.rename(tmp, paths.ndjsonGz);
+  await fsp.writeFile(paths.meta, JSON.stringify(meta, null, 2));
+
+  // Drop bulky legacy file if present (keep meta pointer)
+  try {
+    await fsp.unlink(paths.legacyJson);
+  } catch {
+    /* ok */
+  }
+}
+
+async function readNdjsonGz(file) {
+  const events = [];
+  const rl = createInterface({
+    input: createReadStream(file).pipe(zlib.createGunzip()),
+    crlfDelay: Infinity,
+  });
+
+  for await (const line of rl) {
+    if (!line.trim()) continue;
+    const row = JSON.parse(line);
+    if (Array.isArray(row)) {
+      events.push({
+        id: row[0],
+        magnitude: row[1],
+        depth: row[2],
+        latitude: row[3],
+        longitude: row[4],
+        timeMs: row[5],
+        time: new Date(row[5]).toISOString(),
+        place: row[6] || 'Unknown',
+        source: row[7] || null,
+        status: 'catalog',
+        type: 'earthquake',
+        url: '',
+        felt: null,
+        tsunami: 0,
+        sig: null,
+        alert: null,
+      });
+    } else if (row && typeof row === 'object') {
+      // object-shaped NDJSON fallback
+      events.push({
+        ...row,
+        time: row.time || new Date(row.timeMs).toISOString(),
+      });
+    }
+  }
+  return events;
 }
 
 function* timeChunks(start, end, chunkDays) {
@@ -148,9 +378,8 @@ async function fetchUsgsFdsnChunked(start, end, minMagnitude) {
   const out = [];
   for (const chunk of timeChunks(start, end, CHUNK_DAYS)) {
     try {
-      const batch = await fetchUsgsFdsn(chunk.start, chunk.end, minMagnitude);
-      out.push(...batch);
-      await sleep(200);
+      out.push(...(await fetchUsgsFdsn(chunk.start, chunk.end, minMagnitude)));
+      await sleep(150);
     } catch (err) {
       console.warn(`[usgs-fdsn] chunk fail ${chunk.start.toISOString()}:`, err.message);
     }
@@ -166,7 +395,6 @@ async function fetchUsgsFdsn(start, end, minMagnitude) {
   url.searchParams.set('minmagnitude', String(minMagnitude));
   url.searchParams.set('orderby', 'time-asc');
   url.searchParams.set('limit', '20000');
-
   const payload = await fetchJson(url.toString(), { timeout: 90_000 });
   return tagSource(parseFeatures(payload.features || []), 'usgs-fdsn');
 }
@@ -188,9 +416,8 @@ async function fetchEmscChunked(start, end, minMagnitude) {
   const out = [];
   for (const chunk of timeChunks(start, end, CHUNK_DAYS)) {
     try {
-      const batch = await fetchEmsc(chunk.start, chunk.end, minMagnitude);
-      out.push(...batch);
-      await sleep(250);
+      out.push(...(await fetchEmsc(chunk.start, chunk.end, minMagnitude)));
+      await sleep(200);
     } catch (err) {
       console.warn(`[emsc] chunk fail ${chunk.start.toISOString()}:`, err.message);
     }
@@ -207,7 +434,6 @@ async function fetchEmsc(start, end, minMagnitude) {
   url.searchParams.set('limit', '20000');
   url.searchParams.set('orderby', 'time');
   url.searchParams.set('nodata', '204');
-
   const text = await fetchJson(url.toString(), { timeout: 90_000 });
   if (typeof text === 'string' && text.trim()) {
     return tagSource(parseFdsnText(text, 'emsc'), 'emsc');
@@ -224,7 +450,7 @@ async function scrapeUsgsSignificant() {
     let m;
     while ((m = magPlace.exec(html)) !== null) {
       const magnitude = Number(m[1]);
-      const place = clean(m[2]);
+      const place = String(m[2]).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
       if (!Number.isFinite(magnitude) || !place) continue;
       events.push({
         id: `scrape-${magnitude}-${hash(place)}`,
@@ -307,7 +533,6 @@ function dedupeEvents(events) {
       Number(e.latitude).toFixed(1),
       Number(e.longitude).toFixed(1),
     ].join('|');
-
     const prev = byKey.get(key);
     if (!prev || rank(e.source) > rank(prev.source)) byKey.set(key, e);
   }
@@ -316,13 +541,6 @@ function dedupeEvents(events) {
     (e) =>
       !(e.source === 'scrape-usgs' && e.latitude === 0 && e.longitude === 0 && e.magnitude === 0),
   );
-}
-
-function clean(s) {
-  return String(s)
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 function hash(s) {
@@ -335,4 +553,20 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-export { FetchError };
+function median(nums) {
+  if (!nums.length) return 0;
+  const s = [...nums].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return round(s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2, 1);
+}
+
+function round(n, d) {
+  const f = 10 ** d;
+  return Math.round(Number(n) * f) / f;
+}
+
+function formatBytes(n) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 ** 2) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 ** 2).toFixed(2)} MB`;
+}
