@@ -22,13 +22,13 @@ import {
 import { useQuakeData } from './hooks/useQuakeData';
 
 const TITLES = {
-  overview: 'Seismic overview',
-  map: 'Event map',
-  analytics: 'Depth & regions',
-  predict: 'Pattern predict',
-  alerts: 'Alert monitor',
-  news: 'Earthquake news',
-  data: 'Event registry',
+  overview: { title: 'Seismic overview', sub: 'Live activity, energy release, and a calm read of the window.' },
+  map: { title: 'Event map', sub: 'Explore where motion clustered — tap markers for detail.' },
+  analytics: { title: 'Depth & regions', sub: 'Structured depth profiles and regional hotspots.' },
+  predict: { title: 'Pattern predict', sub: 'Short-horizon activity nowcast from the trained risk model.' },
+  alerts: { title: 'Alert monitor', sub: 'Threshold-based review list for stronger events.' },
+  news: { title: 'Earthquake news', sub: 'Coverage matched to regions currently in the feed.' },
+  data: { title: 'Event registry', sub: 'Browse and export the filtered event set.' },
 };
 
 const SHOW_KPIS = new Set(['overview', 'analytics', 'predict']);
@@ -62,8 +62,8 @@ export default function App() {
 
   async function handleTrain() {
     try {
-      await data.trainModel();
-      pushToast('Model retrained', 'success');
+      await data.trainModel({ days: 90, minMagnitude: 2.5, epochs: 45 });
+      pushToast('Model retrained on 90-day multi-catalog data', 'success');
     } catch (err) {
       pushToast(err.message || 'Training failed', 'error');
     }
@@ -92,34 +92,37 @@ export default function App() {
       </aside>
 
       <main className="main">
-        <div className="page-head">
+        <header className="page-head">
           <p className="eyebrow">QuakePulse</p>
-          <h1 className="page-title">{TITLES[page]}</h1>
-        </div>
+          <h1 className="page-title">{TITLES[page].title}</h1>
+          <p className="page-sub">{TITLES[page].sub}</p>
+        </header>
 
-        <StatusBar
-          summary={data.summary}
-          refreshing={data.refreshing}
-          error={data.error}
-          autoRefresh={data.filters.autoRefresh}
-          secondsToRefresh={data.secondsToRefresh}
-          refreshSeconds={data.filters.refreshSeconds}
-          partialErrors={data.partialErrors}
-        />
+        <section className="control-strip" aria-label="Live status and filters">
+          <StatusBar
+            summary={data.summary}
+            refreshing={data.refreshing}
+            error={data.error}
+            autoRefresh={data.filters.autoRefresh}
+            secondsToRefresh={data.secondsToRefresh}
+            refreshSeconds={data.filters.refreshSeconds}
+            partialErrors={data.partialErrors}
+          />
 
-        <ActiveFilterChips
-          filters={data.filters}
-          updateFilter={data.updateFilter}
-          onReset={data.resetFilters}
-          onOpenFilters={() => setFiltersOpen(true)}
-        />
+          <ActiveFilterChips
+            filters={data.filters}
+            updateFilter={data.updateFilter}
+            onReset={data.resetFilters}
+            onOpenFilters={() => setFiltersOpen(true)}
+          />
+        </section>
 
         {data.loading && !data.summary ? (
           <SkeletonDashboard />
         ) : (
           <>
             {data.error && !data.summary && (
-              <div className="panel" style={{ textAlign: 'center' }}>
+              <div className="panel panel-center">
                 <EmptyState title="Unable to load feed" body={data.error} />
                 <button type="button" className="btn btn-primary" onClick={handleRefresh}>
                   Retry
@@ -128,7 +131,10 @@ export default function App() {
             )}
 
             {data.summary && (
-              <div className={data.refreshing ? 'content-dim' : undefined}>
+              <div
+                key={page}
+                className={`workspace stack${data.refreshing ? ' content-dim' : ''}`}
+              >
                 {SHOW_KPIS.has(page) && <KpiGrid kpis={data.summary.kpis} />}
                 {page === 'overview' && data.summary.executiveSummary ? (
                   <p className="summary">{data.summary.executiveSummary}</p>
