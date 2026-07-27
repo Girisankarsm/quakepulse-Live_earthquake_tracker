@@ -41,8 +41,15 @@ router.get('/meta', (_req, res) => {
       { id: 'data', label: 'Data', description: 'Registry & export' },
     ],
     ml: {
-      version: '2.0.0',
-      endpoints: ['/api/ml/model', '/api/ml/predict', '/api/ml/patterns', '/api/ml/train'],
+      version: '3.0.0',
+      endpoints: [
+        '/api/ml/model',
+        '/api/ml/predict',
+        '/api/ml/patterns',
+        '/api/ml/train',
+        '/api/ml/auto-train',
+      ],
+      autoTrain: true,
       disclaimer:
         'Short-horizon elevated activity nowcast from multi-catalog seismicity — not deterministic earthquake prediction.',
     },

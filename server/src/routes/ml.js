@@ -11,6 +11,12 @@ import {
   downloadTrainingDataset,
   loadPersistedDataset,
 } from '../services/datasets.js';
+import {
+  getAutoTrainStatus,
+  runCollectAndTrain,
+  startAutoTrainer,
+  stopAutoTrainer,
+} from '../services/autoTrainer.js';
 
 const router = Router();
 
@@ -20,6 +26,7 @@ function parsePeriod(query) {
 
 router.get('/model', (_req, res) => {
   const model = loadModel();
+  const auto = getAutoTrainStatus();
   res.json({
     loaded: Boolean(model.trainedAt),
     version: model.version,
@@ -30,7 +37,41 @@ router.get('/model', (_req, res) => {
     horizonHours: model.horizonHours || 6,
     features: model.features || [],
     disclaimer: model.disclaimer,
+    autoTrain: {
+      enabled: auto.enabled,
+      running: auto.running,
+      nextRunAt: auto.nextRunAt,
+      lastFinishedAt: auto.lastFinishedAt,
+      runCount: auto.runCount,
+      intervalHours: auto.intervalHours,
+    },
   });
+});
+
+router.get('/auto-train', (_req, res) => {
+  res.json(getAutoTrainStatus());
+});
+
+router.post('/auto-train/start', (_req, res) => {
+  res.json({ ok: true, ...startAutoTrainer() });
+});
+
+router.post('/auto-train/stop', (_req, res) => {
+  res.json({ ok: true, ...stopAutoTrainer() });
+});
+
+router.post('/auto-train/run', async (req, res, next) => {
+  try {
+    const result = await runCollectAndTrain({
+      days: req.body?.days,
+      minMagnitude: req.body?.minMagnitude,
+      epochs: req.body?.epochs,
+      force: req.body?.force !== false,
+    });
+    res.json({ ok: Boolean(result?.ok), ...result, status: getAutoTrainStatus() });
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.get('/patterns', async (req, res, next) => {
@@ -122,11 +163,12 @@ router.post('/train', async (req, res, next) => {
     }
 
     const model = trainRiskModel(events, {
-      epochs: Number(req.body?.epochs) || 24,
+      epochs: Number(req.body?.epochs) || 45,
       horizonHours: Number(req.body?.horizonHours) || 6,
       magThreshold: Number(req.body?.magThreshold) || 4.0,
       persist: true,
       forcePersist: true,
+      maxSamples: 20_000,
     });
 
     res.json({
@@ -136,9 +178,12 @@ router.post('/train', async (req, res, next) => {
         version: model.version,
         trainedAt: model.trainedAt,
         samples: model.samples,
+        trainSamples: model.trainSamples,
         eventCount: model.eventCount,
         metrics: model.metrics,
+        threshold: model.threshold,
         horizonHours: model.horizonHours,
+        features: model.features,
         clusters: model.clusters?.length || 0,
         disclaimer: model.disclaimer,
       },

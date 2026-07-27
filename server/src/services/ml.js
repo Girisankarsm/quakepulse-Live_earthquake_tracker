@@ -22,44 +22,52 @@ const FEATURE_KEYS = [
   'rate1h',
   'rate6h',
   'rate24h',
+  'countM3',
   'countM4',
   'countM5',
   'maxMag24h',
   'avgMag24h',
+  'magStd',
   'shallowRatio',
   'clustering',
   'energyNorm',
   'magAccel',
   'hoursSinceStrong',
   'hoursSinceAny',
+  'interEventCv',
   'bValueProxy',
   'ringOfFire',
   'depthTrend',
   'sequenceLen',
+  'omoriProxy',
 ];
 
 const PRIOR = {
-  bias: -1.9,
-  rate1h: 0.9,
-  rate6h: 0.5,
-  rate24h: 0.3,
-  countM4: 0.85,
-  countM5: 1.1,
-  maxMag24h: 0.7,
-  avgMag24h: 0.35,
-  shallowRatio: 0.3,
-  clustering: 0.5,
-  energyNorm: 0.35,
-  magAccel: 0.7,
-  hoursSinceStrong: -0.5,
-  hoursSinceAny: -0.25,
-  bValueProxy: 0.2,
-  ringOfFire: 0.4,
-  depthTrend: 0.15,
-  sequenceLen: 0.45,
+  bias: -1.6,
+  rate1h: 0.85,
+  rate6h: 0.45,
+  rate24h: 0.25,
+  countM3: 0.4,
+  countM4: 0.95,
+  countM5: 1.2,
+  maxMag24h: 0.8,
+  avgMag24h: 0.3,
+  magStd: 0.35,
+  shallowRatio: 0.25,
+  clustering: 0.55,
+  energyNorm: 0.4,
+  magAccel: 0.75,
+  hoursSinceStrong: -0.55,
+  hoursSinceAny: -0.2,
+  interEventCv: 0.3,
+  bValueProxy: 0.15,
+  ringOfFire: 0.45,
+  depthTrend: 0.2,
+  sequenceLen: 0.4,
+  omoriProxy: 0.6,
 };
 
-const CELL_DEG = 5; // spatial training cells
+const CELL_DEG = 3; // finer spatial cells → deeper labels
 const WEIGHTS_KEY = 'ml:weights';
 
 /* -------------------------------------------------------------------------- */
@@ -143,7 +151,7 @@ export function trainRiskModel(events = [], opts = {}) {
       const lr = lr0 * (1 / (1 + epoch * 0.04));
       shuffleInPlace(train);
       for (const s of train) {
-        const pred = sigmoid(dot(weights, s.x));
+        const pred = scoreProbability(s.x, weights);
         const err = pred - s.y;
         const cw = s.y === 1 ? wPos : wNeg;
         for (const k of FEATURE_KEYS) {
@@ -159,7 +167,7 @@ export function trainRiskModel(events = [], opts = {}) {
   }
 
   const threshold = tuneThreshold(test.length >= 20 ? test : samples, weights);
-  const metrics = evaluateModel(test.length >= 20 ? test : samples, weights, threshold);
+  const metrics = evaluateHoldout(test.length >= 20 ? test : samples, weights, threshold);
   const clusters = kMeansClusters(events, Math.min(8, Math.max(2, Math.floor(events.length / 50))));
 
   const model = {
@@ -508,17 +516,22 @@ function forecastRegions(events, model) {
   for (const [region, list] of byRegion) {
     const feat = regionWindowFeatures(list, now);
     const logistic = scoreProbability(feat, weights);
-    const rateBoost = Math.min(1, list.filter((e) => e.magnitude >= 4).length / 4) * 0.18;
-    const prob = Math.min(0.99, logistic * 0.88 + rateBoost + feat.ringOfFire * 0.06);
+    const maxMag = Math.max(...list.map((e) => e.magnitude));
+    const m4 = list.filter((e) => e.magnitude >= 4).length;
+    // Gate: microquake swarms without M≥4 should not look "elevated"
+    const magGate = Math.min(1, Math.max(0.15, (maxMag - 2.8) / 3.2));
+    const rateBoost = Math.min(1, m4 / 4) * 0.14 * magGate;
+    const prob = Math.min(0.99, (logistic * 0.9 + rateBoost + feat.ringOfFire * 0.05) * magGate + logistic * (1 - magGate) * 0.35);
     out.push({
       region,
       eventCount: list.length,
       riskScore: Math.round(prob * 100),
       level: riskLevel(prob, threshold),
       horizonHours: model.horizonHours || 6,
-      maxMagnitude: round(Math.max(...list.map((e) => e.magnitude)), 1),
+      maxMagnitude: round(maxMag, 1),
       avgMagnitude: round(avg(list.map((e) => e.magnitude)), 2),
       rate24h: list.length,
+      m4Count: m4,
       probability: round(prob, 3),
       ringOfFire: round(feat.ringOfFire, 2),
     });
@@ -557,9 +570,14 @@ function scoreGlobal(events, weights, threshold = 0.5) {
   const now = Math.max(...events.map((e) => e.timeMs));
   const feat = regionWindowFeatures(events, now);
   const logistic = scoreProbability(feat, weights);
-  const strong = events.filter((e) => e.magnitude >= 4).length;
-  const rateBoost = Math.min(1, strong / 8) * 0.15;
-  const prob = Math.min(0.99, logistic * 0.88 + rateBoost + feat.ringOfFire * 0.06);
+  const maxMag = Math.max(...events.map((e) => e.magnitude));
+  const m4 = events.filter((e) => e.magnitude >= 4).length;
+  const magGate = Math.min(1, Math.max(0.2, (maxMag - 2.8) / 3.2));
+  const rateBoost = Math.min(1, m4 / 8) * 0.12 * magGate;
+  const prob = Math.min(
+    0.99,
+    (logistic * 0.9 + rateBoost + feat.ringOfFire * 0.05) * magGate + logistic * (1 - magGate) * 0.4,
+  );
   return {
     score: Math.round(prob * 100),
     level: riskLevel(prob, threshold),
@@ -717,10 +735,11 @@ function tuneThreshold(samples, weights) {
     y: s.y,
   }));
   let bestT = 0.5;
-  let bestF1 = -1;
+  let bestScore = -1;
 
-  for (let i = 1; i <= 19; i += 1) {
-    const t = i / 20;
+  // Keep threshold in a usable band — unconstrained F1 often collapses near 0
+  for (let i = 7; i <= 16; i += 1) {
+    const t = i / 20; // 0.35 … 0.80
     let tp = 0;
     let fp = 0;
     let fn = 0;
@@ -733,8 +752,10 @@ function tuneThreshold(samples, weights) {
     const precision = tp / Math.max(1, tp + fp);
     const recall = tp / Math.max(1, tp + fn);
     const f1 = (2 * precision * recall) / Math.max(1e-6, precision + recall);
-    if (f1 > bestF1) {
-      bestF1 = f1;
+    // Prefer balanced precision (≥0.35) when possible
+    const score = f1 + Math.min(precision, 0.45) * 0.15;
+    if (score > bestScore) {
+      bestScore = score;
       bestT = t;
     }
   }
