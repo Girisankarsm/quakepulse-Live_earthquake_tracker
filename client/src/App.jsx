@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Topbar } from './components/Topbar';
 import { BottomNav, SideNav } from './components/Nav';
-import { FilterPanel, FilterDrawer } from './components/Filters';
+import { FilterPanel, FilterDrawer, ActiveFilterChips } from './components/Filters';
 import {
   StatusBar,
   KpiGrid,
@@ -9,11 +9,12 @@ import {
   EmptyState,
   Toast,
 } from './components/Status';
-import { BrandMark } from './components/icons';
+import { BootLoader } from './components/BootLoader';
 import {
   OverviewPage,
   MapPage,
   AnalyticsPage,
+  PredictPage,
   AlertsPage,
   NewsPage,
   DataPage,
@@ -23,11 +24,14 @@ import { useQuakeData } from './hooks/useQuakeData';
 const TITLES = {
   overview: 'Seismic overview',
   map: 'Event map',
-  analytics: 'Depth & patterns',
+  analytics: 'Depth & regions',
+  predict: 'Pattern predict',
   alerts: 'Alert monitor',
   news: 'Earthquake news',
   data: 'Event registry',
 };
+
+const SHOW_KPIS = new Set(['overview', 'analytics', 'predict']);
 
 export default function App() {
   const [page, setPage] = useState('overview');
@@ -43,7 +47,7 @@ export default function App() {
 
   function pushToast(message, type = 'success') {
     const id = `${Date.now()}-${Math.random()}`;
-    setToasts((t) => [...t, { id, message, type }]);
+    setToasts((t) => [...t.slice(-4), { id, message, type }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3200);
   }
 
@@ -56,23 +60,21 @@ export default function App() {
     }
   }
 
+  async function handleTrain() {
+    try {
+      await data.trainModel();
+      pushToast('Model retrained', 'success');
+    } catch (err) {
+      pushToast(err.message || 'Training failed', 'error');
+    }
+  }
+
   if (data.boot && !data.summary) {
-    return (
-      <div className="boot-loader">
-        <div>
-          <BrandMark />
-          <h1>QuakePulse</h1>
-          <p>Connecting to USGS seismic feeds…</p>
-          <div className="progress-bar">
-            <span />
-          </div>
-        </div>
-      </div>
-    );
+    return <BootLoader />;
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${data.refreshing ? ' is-refreshing' : ''}`}>
       <Topbar
         refreshing={data.refreshing}
         onRefresh={handleRefresh}
@@ -82,7 +84,11 @@ export default function App() {
 
       <aside className="sidebar" aria-label="Controls">
         <SideNav page={page} onChange={setPage} />
-        <FilterPanel filters={data.filters} updateFilter={data.updateFilter} />
+        <FilterPanel
+          filters={data.filters}
+          updateFilter={data.updateFilter}
+          onReset={data.resetFilters}
+        />
       </aside>
 
       <main className="main">
@@ -95,6 +101,17 @@ export default function App() {
           summary={data.summary}
           refreshing={data.refreshing}
           error={data.error}
+          autoRefresh={data.filters.autoRefresh}
+          secondsToRefresh={data.secondsToRefresh}
+          refreshSeconds={data.filters.refreshSeconds}
+          partialErrors={data.partialErrors}
+        />
+
+        <ActiveFilterChips
+          filters={data.filters}
+          updateFilter={data.updateFilter}
+          onReset={data.resetFilters}
+          onOpenFilters={() => setFiltersOpen(true)}
         />
 
         {data.loading && !data.summary ? (
@@ -111,32 +128,54 @@ export default function App() {
             )}
 
             {data.summary && (
-              <>
-                <KpiGrid kpis={data.summary.kpis} />
-                {page === 'overview' && (
+              <div className={data.refreshing ? 'content-dim' : undefined}>
+                {SHOW_KPIS.has(page) && <KpiGrid kpis={data.summary.kpis} />}
+                {page === 'overview' && data.summary.executiveSummary ? (
                   <p className="summary">{data.summary.executiveSummary}</p>
-                )}
+                ) : null}
 
                 {page === 'overview' && (
-                  <OverviewPage summary={data.summary} analytics={data.analytics} />
+                  <OverviewPage
+                    summary={data.summary}
+                    analytics={data.analytics}
+                    onOpenPredict={() => setPage('predict')}
+                  />
                 )}
                 {page === 'map' && (
                   <MapPage events={data.events} analytics={data.analytics} />
                 )}
                 {page === 'analytics' && <AnalyticsPage analytics={data.analytics} />}
-                {page === 'alerts' && <AlertsPage alerts={data.alerts} />}
+                {page === 'predict' && (
+                  <PredictPage
+                    analytics={data.analytics}
+                    prediction={data.prediction}
+                    modelInfo={data.modelInfo}
+                    training={data.training}
+                    onTrain={handleTrain}
+                  />
+                )}
+                {page === 'alerts' && (
+                  <AlertsPage
+                    alerts={data.alerts}
+                    filters={data.filters}
+                    updateFilter={data.updateFilter}
+                  />
+                )}
                 {page === 'news' && (
-                  <NewsPage news={data.news} place={data.filters.place} />
+                  <NewsPage
+                    news={data.news}
+                    place={data.filters.place}
+                    onRetry={handleRefresh}
+                  />
                 )}
                 {page === 'data' && <DataPage events={data.events} />}
-              </>
+              </div>
             )}
           </>
         )}
 
         <p className="footer-note">
-          QuakePulse v3 · For informational and analytical purposes only. Not for operational
-          emergency response. Data © USGS.
+          QuakePulse v3 · Informational analytics only — not for emergency response. Data © USGS.
         </p>
       </main>
 
@@ -146,6 +185,7 @@ export default function App() {
         onClose={() => setFiltersOpen(false)}
         filters={data.filters}
         updateFilter={data.updateFilter}
+        onReset={data.resetFilters}
       />
       <Toast toasts={toasts} />
     </div>

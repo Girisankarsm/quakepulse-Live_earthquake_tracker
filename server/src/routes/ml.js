@@ -90,7 +90,7 @@ router.get('/predict', async (req, res, next) => {
 
 router.post('/train', async (req, res, next) => {
   try {
-    const days = Math.min(Math.max(Number(req.body?.days) || 30, 7), 90);
+    const days = Math.min(Math.max(Number(req.body?.days) || 90, 7), 120);
     const minMagnitude = Number(req.body?.minMagnitude) || 2.5;
     const useCache = req.body?.useCache === true;
     const feedOnly = req.body?.feedOnly === true;
@@ -124,7 +124,7 @@ router.post('/train', async (req, res, next) => {
     const model = trainRiskModel(events, {
       epochs: Number(req.body?.epochs) || 24,
       horizonHours: Number(req.body?.horizonHours) || 6,
-      magThreshold: Number(req.body?.magThreshold) || 4.5,
+      magThreshold: Number(req.body?.magThreshold) || 4.0,
       persist: true,
       forcePersist: true,
     });

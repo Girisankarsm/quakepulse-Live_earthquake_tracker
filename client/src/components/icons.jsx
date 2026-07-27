@@ -32,6 +32,17 @@ export const NAV = [
     ),
   },
   {
+    id: 'predict',
+    label: 'Predict',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+        <circle cx="12" cy="12" r="8" />
+        <path d="M12 8v4l2.5 2.5" />
+        <path d="M16.5 5.5l1.5-1.5M7.5 5.5L6 4M19 12h2M3 12h2" />
+      </svg>
+    ),
+  },
+  {
     id: 'alerts',
     label: 'Alerts',
     icon: (

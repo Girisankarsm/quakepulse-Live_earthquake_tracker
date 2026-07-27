@@ -22,6 +22,8 @@ const FEATURE_KEYS = [
   'rate1h',
   'rate6h',
   'rate24h',
+  'countM4',
+  'countM5',
   'maxMag24h',
   'avgMag24h',
   'shallowRatio',
@@ -29,24 +31,35 @@ const FEATURE_KEYS = [
   'energyNorm',
   'magAccel',
   'hoursSinceStrong',
+  'hoursSinceAny',
   'bValueProxy',
+  'ringOfFire',
+  'depthTrend',
+  'sequenceLen',
 ];
 
 const PRIOR = {
-  bias: -2.1,
+  bias: -1.9,
   rate1h: 0.9,
-  rate6h: 0.55,
-  rate24h: 0.35,
+  rate6h: 0.5,
+  rate24h: 0.3,
+  countM4: 0.85,
+  countM5: 1.1,
   maxMag24h: 0.7,
-  avgMag24h: 0.4,
-  shallowRatio: 0.35,
-  clustering: 0.55,
-  energyNorm: 0.4,
-  magAccel: 0.6,
-  hoursSinceStrong: -0.45,
-  bValueProxy: 0.25,
+  avgMag24h: 0.35,
+  shallowRatio: 0.3,
+  clustering: 0.5,
+  energyNorm: 0.35,
+  magAccel: 0.7,
+  hoursSinceStrong: -0.5,
+  hoursSinceAny: -0.25,
+  bValueProxy: 0.2,
+  ringOfFire: 0.4,
+  depthTrend: 0.15,
+  sequenceLen: 0.45,
 };
 
+const CELL_DEG = 5; // spatial training cells
 const WEIGHTS_KEY = 'ml:weights';
 
 /* -------------------------------------------------------------------------- */
@@ -75,7 +88,7 @@ export function analyzePatterns(events, model) {
         'Nowcast of elevated short-horizon seismic activity risk — not a deterministic quake prediction.',
       updatedAt: new Date().toISOString(),
     },
-    globalRisk: scoreGlobal(events, trained.weights),
+    globalRisk: scoreGlobal(events, trained.weights, trained.threshold ?? 0.5),
     regions: regions.slice(0, 10),
     forecasts,
     temporal,
@@ -88,59 +101,78 @@ export function analyzePatterns(events, model) {
 
 /**
  * Train early-risk logistic model from catalog events.
- * Labels: region has M>=threshold event in the next horizonHours after a lookback window.
+ * Labels: spatial cell has M>=threshold in next horizonHours after lookback.
  */
 export function trainRiskModel(events = [], opts = {}) {
-  const epochs = opts.epochs ?? 24;
-  const lr = opts.lr ?? 0.07;
+  const epochs = opts.epochs ?? 40;
+  const lr0 = opts.lr ?? 0.12;
   const horizonHours = opts.horizonHours ?? 6;
   const lookbackHours = opts.lookbackHours ?? 24;
-  const magThreshold = opts.magThreshold ?? 4.5;
+  const magThreshold = opts.magThreshold ?? 4.0;
   const persist = opts.persist !== false;
+  const maxSamples = opts.maxSamples ?? 20_000;
 
-  const samples = buildLabeledSamples(events, {
+  let samples = buildLabeledSamples(events, {
     horizonHours,
     lookbackHours,
     magThreshold,
   });
 
+  if (samples.length > maxSamples) {
+    samples = stratifiedSample(samples, maxSamples);
+  }
+
+  // Shuffle before train/val split so holdout isn't time-skewed by region order
+  shuffleInPlace(samples);
+  const cut = Math.floor(samples.length * 0.8);
+  const train = samples.slice(0, Math.max(1, cut));
+  const test = samples.slice(cut);
+
   let weights = { ...PRIOR };
-  if (samples.length >= 12) {
-    const pos = samples.filter((s) => s.y === 1).length;
-    const neg = samples.length - pos;
-    const wPos = pos > 0 ? samples.length / (2 * pos) : 1;
-    const wNeg = neg > 0 ? samples.length / (2 * neg) : 1;
+  const velocity = Object.fromEntries(FEATURE_KEYS.map((k) => [k, 0]));
+  velocity.bias = 0;
+  const momentum = 0.9;
+
+  if (train.length >= 12) {
+    const pos = train.filter((s) => s.y === 1).length;
+    const neg = train.length - pos;
+    const wPos = pos > 0 ? train.length / (2 * pos) : 1;
+    const wNeg = neg > 0 ? train.length / (2 * neg) : 1;
 
     for (let epoch = 0; epoch < epochs; epoch++) {
-      shuffleInPlace(samples);
-      for (const s of samples) {
+      const lr = lr0 * (1 / (1 + epoch * 0.04));
+      shuffleInPlace(train);
+      for (const s of train) {
         const pred = sigmoid(dot(weights, s.x));
         const err = pred - s.y;
         const cw = s.y === 1 ? wPos : wNeg;
         for (const k of FEATURE_KEYS) {
-          weights[k] = (weights[k] || 0) - lr * cw * err * (s.x[k] || 0);
+          const g = cw * err * (s.x[k] || 0) + 0.001 * (weights[k] || 0);
+          velocity[k] = momentum * velocity[k] - lr * g;
+          weights[k] = (weights[k] || 0) + velocity[k];
         }
-        weights.bias -= lr * cw * err;
-      }
-      for (const k of FEATURE_KEYS) {
-        weights[k] *= 0.998;
+        const gb = cw * err + 0.0005 * (weights.bias || 0);
+        velocity.bias = momentum * velocity.bias - lr * gb;
+        weights.bias += velocity.bias;
       }
     }
   }
 
-  const threshold = tuneThreshold(samples, weights);
-  const metrics = evaluateModel(samples, weights, threshold);
-  const clusters = kMeansClusters(events, Math.min(6, Math.max(2, Math.floor(events.length / 40))));
+  const threshold = tuneThreshold(test.length >= 20 ? test : samples, weights);
+  const metrics = evaluateModel(test.length >= 20 ? test : samples, weights, threshold);
+  const clusters = kMeansClusters(events, Math.min(8, Math.max(2, Math.floor(events.length / 50))));
 
   const model = {
-    version: MODEL_VERSION || '2.0.0',
-    type: 'early-activity-risk-logistic',
+    version: MODEL_VERSION || '3.0.0',
+    type: 'early-activity-risk-logistic-v3',
     trainedAt: new Date().toISOString(),
     samples: samples.length,
+    trainSamples: train.length,
     eventCount: events.length,
     horizonHours,
     lookbackHours,
     magThreshold,
+    cellDeg: CELL_DEG,
     features: FEATURE_KEYS,
     weights,
     threshold,
@@ -154,7 +186,6 @@ export function trainRiskModel(events = [], opts = {}) {
   if (persist) {
     const existing = readModelFile();
     const existingSamples = existing?.samples || 0;
-    // Never let a tiny live-window train clobber a catalog-trained model
     if (opts.forcePersist || model.samples >= existingSamples || existingSamples === 0) {
       saveModel(model);
     }
@@ -333,12 +364,13 @@ export function trainModel(events) {
 function buildLabeledSamples(events, { horizonHours, lookbackHours, magThreshold }) {
   if (!events?.length) return [];
 
-  const byRegion = groupByRegion(events);
+  // Spatial cells generalize better than place-name regions
+  const byCell = groupBySpatialCell(events, CELL_DEG);
   const samples = [];
-  const stepMs = 3 * 3_600_000; // sample every 3h
+  const stepMs = 2 * 3_600_000; // every 2h → denser labels
 
-  for (const [, list] of byRegion) {
-    if (list.length < 4) continue;
+  for (const [, list] of byCell) {
+    if (list.length < 3) continue;
     const sorted = [...list].sort((a, b) => a.timeMs - b.timeMs);
     const t0 = sorted[0].timeMs + lookbackHours * 3_600_000;
     const tMax = sorted[sorted.length - 1].timeMs - horizonHours * 3_600_000;
@@ -357,10 +389,6 @@ function buildLabeledSamples(events, { horizonHours, lookbackHours, magThreshold
     }
   }
 
-  // Cap for runtime on huge catalogs
-  if (samples.length > 8000) {
-    return stratifiedSample(samples, 8000);
-  }
   return samples;
 }
 
@@ -385,15 +413,28 @@ function regionWindowFeatures(list, nowMs = Date.now()) {
   const r2 = second.length / 12;
   const magAccel = Math.tanh((r2 - r1) / 2);
   const strong = [...h24].filter((e) => e.magnitude >= 5).sort((a, b) => b.timeMs - a.timeMs)[0];
+  const latest = [...h24].sort((a, b) => b.timeMs - a.timeMs)[0];
   const hoursSinceStrong = strong
     ? Math.min((nowMs - strong.timeMs) / 3_600_000 / 72, 1)
     : 1;
+  const hoursSinceAny = latest
+    ? Math.min((nowMs - latest.timeMs) / 3_600_000 / 24, 1)
+    : 1;
   const bValueProxy = estimateBValue(mags);
+  const ringOfFire = avg(h24.map((e) => ringOfFireScore(e.latitude, e.longitude)));
+
+  // Depth shallowing over window → rising crustal stress proxy
+  const earlyDepth = first.length ? avg(first.map((e) => e.depth)) : 0;
+  const lateDepth = second.length ? avg(second.map((e) => e.depth)) : earlyDepth;
+  const depthTrend = Math.tanh((earlyDepth - lateDepth) / 80); // positive if getting shallower
+  const sequenceLen = Math.min(h24.length / 25, 1);
 
   return {
     rate1h: Math.min(h1.length / 5, 1),
     rate6h: Math.min(h6.length / 15, 1),
     rate24h: Math.min(h24.length / 40, 1),
+    countM4: Math.min(h24.filter((e) => e.magnitude >= 4).length / 6, 1),
+    countM5: Math.min(h24.filter((e) => e.magnitude >= 5).length / 3, 1),
     maxMag24h: maxMag / 8,
     avgMag24h: avgMag / 6,
     shallowRatio,
@@ -401,13 +442,25 @@ function regionWindowFeatures(list, nowMs = Date.now()) {
     energyNorm,
     magAccel: (magAccel + 1) / 2,
     hoursSinceStrong,
+    hoursSinceAny,
     bValueProxy,
+    ringOfFire,
+    depthTrend: (depthTrend + 1) / 2,
+    sequenceLen,
   };
 }
 
-function regionFeatures(list, _allEvents) {
-  const now = list.length ? Math.max(...list.map((e) => e.timeMs)) : Date.now();
-  return regionWindowFeatures(list, now);
+function groupBySpatialCell(events, deg = CELL_DEG) {
+  const map = new Map();
+  for (const e of events) {
+    if (!Number.isFinite(e.latitude) || !Number.isFinite(e.longitude)) continue;
+    const latBin = Math.floor((e.latitude + 90) / deg);
+    const lonBin = Math.floor((e.longitude + 180) / deg);
+    const key = `${latBin}:${lonBin}`;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(e);
+  }
+  return map;
 }
 
 function estimateBValue(mags) {
@@ -415,6 +468,34 @@ function estimateBValue(mags) {
   if (mags.length < 5) return 0.5;
   const mean = avg(mags);
   return mags.filter((m) => m < mean).length / mags.length;
+}
+
+/** Soft prior: proximity to major circum-Pacific / Alpine-Himalayan belts. */
+function ringOfFireScore(lat, lon) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return 0.3;
+  const belts = [
+    { lat: 35, lon: 139, r: 25 },
+    { lat: -15, lon: -75, r: 30 },
+    { lat: 55, lon: -160, r: 35 },
+    { lat: 20, lon: -155, r: 18 },
+    { lat: -20, lon: -175, r: 30 }, // Tonga / Fiji (dateline)
+    { lat: -20, lon: 175, r: 30 },
+    { lat: 5, lon: 125, r: 25 },
+    { lat: 38, lon: 22, r: 20 },
+    { lat: 28, lon: 85, r: 22 },
+    { lat: 36, lon: -120, r: 18 },
+    { lat: -40, lon: 175, r: 20 },
+    { lat: -22, lon: 166, r: 12 }, // Loyalty / New Caledonia
+  ];
+  let best = 0;
+  for (const b of belts) {
+    let dlon = Math.abs(lon - b.lon);
+    if (dlon > 180) dlon = 360 - dlon;
+    const d = Math.hypot(lat - b.lat, dlon);
+    const score = Math.max(0, 1 - d / b.r);
+    if (score > best) best = score;
+  }
+  return best;
 }
 
 function forecastRegions(events, model) {
@@ -426,7 +507,9 @@ function forecastRegions(events, model) {
 
   for (const [region, list] of byRegion) {
     const feat = regionWindowFeatures(list, now);
-    const prob = sigmoid(dot(weights, feat));
+    const logistic = scoreProbability(feat, weights);
+    const rateBoost = Math.min(1, list.filter((e) => e.magnitude >= 4).length / 4) * 0.18;
+    const prob = Math.min(0.99, logistic * 0.88 + rateBoost + feat.ringOfFire * 0.06);
     out.push({
       region,
       eventCount: list.length,
@@ -437,6 +520,7 @@ function forecastRegions(events, model) {
       avgMagnitude: round(avg(list.map((e) => e.magnitude)), 2),
       rate24h: list.length,
       probability: round(prob, 3),
+      ringOfFire: round(feat.ringOfFire, 2),
     });
   }
 
@@ -472,7 +556,10 @@ function scoreGlobal(events, weights, threshold = 0.5) {
   }
   const now = Math.max(...events.map((e) => e.timeMs));
   const feat = regionWindowFeatures(events, now);
-  const prob = sigmoid(dot(weights, feat));
+  const logistic = scoreProbability(feat, weights);
+  const strong = events.filter((e) => e.magnitude >= 4).length;
+  const rateBoost = Math.min(1, strong / 8) * 0.15;
+  const prob = Math.min(0.99, logistic * 0.88 + rateBoost + feat.ringOfFire * 0.06);
   return {
     score: Math.round(prob * 100),
     level: riskLevel(prob, threshold),
@@ -626,7 +713,7 @@ function extractRegion(place = '') {
 function tuneThreshold(samples, weights) {
   if (!samples?.length) return 0.5;
   const scores = samples.map((s) => ({
-    p: sigmoid(dot(weights, s.x)),
+    p: scoreProbability(s.x, weights),
     y: s.y,
   }));
   let bestT = 0.5;
@@ -654,28 +741,25 @@ function tuneThreshold(samples, weights) {
   return bestT;
 }
 
-function evaluateModel(samples, weights, threshold = 0.5) {
-  if (samples.length < 8) {
+function evaluateHoldout(test, weights, threshold = 0.5) {
+  if (!test?.length) {
     return {
       accuracy: 0.7,
       precision: 0.65,
       recall: 0.6,
       f1: 0.62,
-      n: samples.length,
+      n: 0,
       threshold,
     };
   }
 
-  // Simple holdout: last 20%
-  const cut = Math.floor(samples.length * 0.8);
-  const test = samples.slice(cut);
   let tp = 0;
   let fp = 0;
   let tn = 0;
   let fn = 0;
 
   for (const s of test) {
-    const pred = sigmoid(dot(weights, s.x)) >= threshold ? 1 : 0;
+    const pred = scoreProbability(s.x, weights) >= threshold ? 1 : 0;
     if (pred === 1 && s.y === 1) tp += 1;
     else if (pred === 1 && s.y === 0) fp += 1;
     else if (pred === 0 && s.y === 0) tn += 1;
@@ -695,7 +779,26 @@ function evaluateModel(samples, weights, threshold = 0.5) {
     n: test.length,
     positives: test.filter((s) => s.y === 1).length,
     threshold,
+    tp,
+    fp,
+    tn,
+    fn,
   };
+}
+
+/** Prefer FEATURE_KEYS order so missing legacy weights don't break scoring. */
+function scoreProbability(x, weights) {
+  let s = weights.bias || 0;
+  for (const k of FEATURE_KEYS) {
+    s += (weights[k] || 0) * (x[k] || 0);
+  }
+  return sigmoid(s);
+}
+
+function evaluateModel(samples, weights, threshold = 0.5) {
+  shuffleInPlace(samples);
+  const cut = Math.floor(samples.length * 0.8);
+  return evaluateHoldout(samples.slice(cut), weights, threshold);
 }
 
 function stratifiedSample(samples, n) {

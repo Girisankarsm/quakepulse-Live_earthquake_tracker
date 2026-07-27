@@ -99,6 +99,8 @@ router.get('/summary', async (req, res, next) => {
       generated: feed.generated,
       fetchedAt: feed.fetchedAt,
       cached: feed.cached,
+      stale: Boolean(feed.stale),
+      warning: feed.warning || null,
       filters: params,
       kpis: {
         ...kpis,

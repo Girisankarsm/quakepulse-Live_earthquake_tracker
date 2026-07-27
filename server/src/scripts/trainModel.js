@@ -3,7 +3,8 @@
  *
  * Usage:
  *   node src/scripts/trainModel.js
- *   node src/scripts/trainModel.js --days 30 --min-mag 2.5
+ *   node src/scripts/trainModel.js --days 90 --min-mag 2.5 --epochs 45
+ *   node src/scripts/trainModel.js --cache
  *   node src/scripts/trainModel.js --feed week
  */
 
@@ -19,19 +20,23 @@ function arg(name, fallback) {
 
 const feedOnly = process.argv.includes('--feed');
 const useCache = process.argv.includes('--cache');
-const days = Number(arg('--days', '30'));
+const days = Number(arg('--days', '90'));
 const minMag = Number(arg('--min-mag', '2.5'));
 const feed = arg('--feed', 'month');
+const epochs = Number(arg('--epochs', '45'));
+const horizon = Number(arg('--horizon', '6'));
+const threshold = Number(arg('--threshold', '4.0'));
 
-console.log('QuakePulse early-risk trainer');
-console.log('-----------------------------');
+console.log('QuakePulse early-risk trainer v3');
+console.log('--------------------------------');
 
 let events;
 let datasetMeta;
 
-if (feedOnly || process.argv.includes('--feed')) {
-  console.log(`Fetching USGS live feed: ${feed}`);
-  const raw = await fetchEarthquakes(feed === true || feed === 'true' ? 'month' : feed);
+if (feedOnly || (process.argv.includes('--feed') && !useCache)) {
+  const period = feed === true || feed === 'true' ? 'month' : feed;
+  console.log(`Fetching USGS live feed: ${period}`);
+  const raw = await fetchEarthquakes(period);
   events = raw.events;
   datasetMeta = { mode: 'feed', period: raw.period, count: events.length };
 } else if (useCache) {
@@ -48,7 +53,7 @@ if (feedOnly || process.argv.includes('--feed')) {
   }
 } else {
   console.log(`Downloading multi-catalog dataset (days=${days}, minM=${minMag})…`);
-  console.log('Sources: USGS FDSN · USGS feed · EMSC · IRIS · USGS scrape');
+  console.log('Sources: USGS FDSN (chunked) · USGS feeds · USGS significant · EMSC (chunked)');
   const dl = await downloadTrainingDataset({ days, minMagnitude: minMag, persist: true });
   events = dl.events;
   datasetMeta = dl.meta;
@@ -57,14 +62,18 @@ if (feedOnly || process.argv.includes('--feed')) {
   }
 }
 
-console.log(`Training on ${events.length} merged events…`);
+console.log(`Training on ${events.length} merged events · epochs=${epochs} · horizon=${horizon}h · M≥${threshold}`);
+const started = Date.now();
 const model = trainRiskModel(events, {
-  epochs: Number(arg('--epochs', '28')),
-  horizonHours: Number(arg('--horizon', '6')),
-  magThreshold: Number(arg('--threshold', '4.5')),
+  epochs,
+  horizonHours: horizon,
+  magThreshold: threshold,
   persist: true,
+  forcePersist: true,
+  maxSamples: 20_000,
 });
 const path = saveModel(model);
+console.log(`Done in ${((Date.now() - started) / 1000).toFixed(1)}s`);
 
 console.log(
   JSON.stringify(
@@ -75,9 +84,13 @@ console.log(
         window: datasetMeta.window || null,
       },
       model: {
+        version: model.version,
         trainedAt: model.trainedAt,
         samples: model.samples,
+        trainSamples: model.trainSamples,
         metrics: model.metrics,
+        threshold: model.threshold,
+        features: model.features?.length,
         clusters: model.clusters.length,
         path,
         disclaimer: model.disclaimer,

@@ -39,6 +39,17 @@ app.use('/api/earthquakes', earthquakesRouter);
 app.use('/api/news', newsRouter);
 app.use('/api/ml', mlRouter);
 
+// Warm ML model into cache on boot
+try {
+  const { loadModel } = await import('./services/ml.js');
+  const model = loadModel();
+  console.log(
+    `ML model ${model.trainedAt ? `loaded (${model.samples || 0} samples)` : 'not trained yet'}`,
+  );
+} catch (err) {
+  console.warn('ML model warm-up skipped:', err.message);
+}
+
 app.use(express.static(clientDist, { index: false, maxAge: '1h' }));
 
 app.get('*', (req, res, next) => {

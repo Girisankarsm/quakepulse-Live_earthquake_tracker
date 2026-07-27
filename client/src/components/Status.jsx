@@ -1,19 +1,42 @@
 import { formatUtc } from '../lib/format';
 
-export function StatusBar({ summary, refreshing, error }) {
+export function StatusBar({
+  summary,
+  refreshing,
+  error,
+  autoRefresh = true,
+  secondsToRefresh = null,
+  refreshSeconds = 30,
+  partialErrors = [],
+}) {
   if (!summary && !error) return null;
+
+  let nextLabel = null;
+  if (autoRefresh && !error) {
+    if (refreshing) nextLabel = 'Updating now';
+    else if (secondsToRefresh == null) nextLabel = `Every ${refreshSeconds}s`;
+    else if (secondsToRefresh <= 0) nextLabel = 'Updating…';
+    else nextLabel = `Next ${secondsToRefresh}s`;
+  } else if (!autoRefresh) {
+    nextLabel = 'Auto-refresh off';
+  }
+
+  const degraded = Boolean(error) || partialErrors.length > 0;
+
   return (
     <div className="status-row" aria-live="polite">
-      <span className={`chip ${error ? '' : 'chip-live'}`}>
-        {!error && <span className="dot" />}
-        {error ? 'Degraded' : refreshing ? 'Syncing' : 'Live'}
+      <span className={`chip ${degraded ? '' : 'chip-live'}`}>
+        {!degraded && <span className="dot" />}
+        {error ? 'Degraded' : partialErrors.length ? 'Partial' : refreshing ? 'Syncing' : 'Live'}
       </span>
+      {nextLabel ? <span className="chip">{nextLabel}</span> : null}
       <span className="chip">{formatUtc(summary?.fetchedAt)}</span>
       <span className="chip">{summary?.label || '—'}</span>
       <span className="chip">
         {(summary?.kpis?.totalEvents ?? 0).toLocaleString()} events
       </span>
       {summary?.cached && <span className="chip">Cached</span>}
+      {summary?.stale && <span className="chip">Stale fallback</span>}
     </div>
   );
 }

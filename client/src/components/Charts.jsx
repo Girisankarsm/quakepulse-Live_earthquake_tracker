@@ -24,10 +24,13 @@ const tooltipStyle = {
 };
 
 export function MagnitudeTrendChart({ data }) {
+  if (!data?.length) {
+    return <div className="chart-empty">No trend points for this window.</div>;
+  }
   return (
     <div className="chart-box">
       <ResponsiveContainer width="100%" height={240}>
-        <AreaChart data={data || []}>
+        <AreaChart data={data}>
           <defs>
             <linearGradient id="magFill" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#e07020" stopOpacity={0.35} />
@@ -42,7 +45,7 @@ export function MagnitudeTrendChart({ data }) {
             fontSize={11}
             minTickGap={40}
           />
-          <YAxis stroke="#6d7686" fontSize={11} width={36} />
+          <YAxis stroke="#6d7686" fontSize={11} width={36} label={{ value: 'Avg M', angle: -90, position: 'insideLeft', fill: '#6d7686', fontSize: 10 }} />
           <Tooltip
             contentStyle={tooltipStyle}
             labelFormatter={(v) => formatTime(v)}

@@ -1,5 +1,12 @@
 import { Router } from 'express';
-import { APP, USGS_FEEDS } from '../config.js';
+import {
+  APP,
+  AUTO_REFRESH_OPTIONS,
+  AUTO_REFRESH_SECONDS,
+  CACHE_TTL_SECONDS,
+  NEWS_CACHE_TTL_SECONDS,
+  USGS_FEEDS,
+} from '../config.js';
 
 const router = Router();
 const startedAt = Date.now();
@@ -18,6 +25,12 @@ router.get('/meta', (_req, res) => {
   res.json({
     ...APP,
     feeds: Object.entries(USGS_FEEDS).map(([id, f]) => ({ id, label: f.label })),
+    refresh: {
+      defaultSeconds: AUTO_REFRESH_SECONDS,
+      optionsSeconds: AUTO_REFRESH_OPTIONS,
+      cacheTtlSeconds: CACHE_TTL_SECONDS,
+      newsCacheTtlSeconds: NEWS_CACHE_TTL_SECONDS,
+    },
     nav: [
       { id: 'overview', label: 'Overview', description: 'KPIs & trends' },
       { id: 'map', label: 'Map', description: 'Geospatial intelligence' },

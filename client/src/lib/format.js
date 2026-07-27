@@ -29,6 +29,19 @@ export function formatUtc(iso) {
   );
 }
 
+export function formatRelative(iso) {
+  if (!iso) return '';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return formatTime(iso);
+  const mins = Math.floor(ms / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 48) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 export function magClass(m) {
   if (m < 2.5) return 'mag-low';
   if (m < 5) return 'mag-med';
