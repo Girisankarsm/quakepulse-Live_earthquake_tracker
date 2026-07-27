@@ -55,6 +55,24 @@ export const DATASET_DIR = path.resolve(__configDir, '../data');
 export const MODEL_DIR = path.resolve(__configDir, '../models');
 export const MODEL_VERSION = '3.0.0';
 
+/** Auto collect→train loop (network catalogs → retrain). Default ON; set AUTO_TRAIN=0 to disable. */
+export const AUTO_TRAIN_ENABLED =
+  process.env.AUTO_TRAIN !== '0' && process.env.AUTO_TRAIN !== 'false';
+
+export const AUTO_TRAIN_INTERVAL_MS = Math.max(
+  15 * 60_000,
+  Number(process.env.AUTO_TRAIN_INTERVAL_MS) || 60 * 60_000, // default 1 hour
+);
+export const AUTO_TRAIN_DAYS = Math.min(
+  120,
+  Math.max(7, Number(process.env.AUTO_TRAIN_DAYS) || 90),
+);
+export const AUTO_TRAIN_MIN_MAG = Number(process.env.AUTO_TRAIN_MIN_MAG) || 2.5;
+export const AUTO_TRAIN_EPOCHS = Number(process.env.AUTO_TRAIN_EPOCHS) || 40;
+export const AUTO_TRAIN_ON_BOOT =
+  process.env.AUTO_TRAIN_ON_BOOT !== '0' && process.env.AUTO_TRAIN_ON_BOOT !== 'false';
+export const AUTO_TRAIN_BOOT_DELAY_MS = Number(process.env.AUTO_TRAIN_BOOT_DELAY_MS) || 20_000;
+
 export const APP = {
   name: 'QuakePulse',
   subtitle: 'Global Seismic Intelligence',

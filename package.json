@@ -12,6 +12,7 @@
     "build": "npm run build -w client",
     "start": "npm run start -w server",
     "train": "npm run train -w server",
+    "train:loop": "npm run train:loop -w server",
     "test": "npm run test -w server"
   },
   "devDependencies": {

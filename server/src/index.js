@@ -70,6 +70,9 @@ app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`${APP.name} v${APP.version} · API http://localhost:${PORT}`);
+  import('./services/autoTrainer.js')
+    .then(({ startAutoTrainer }) => startAutoTrainer())
+    .catch((err) => console.warn('[auto-train] failed to start:', err.message));
 });
 
 export default app;
