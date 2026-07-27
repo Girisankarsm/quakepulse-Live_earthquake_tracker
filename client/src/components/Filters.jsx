@@ -107,7 +107,7 @@ export function FilterPanel({ filters, updateFilter, compact = false, onReset })
         <label htmlFor="refreshSeconds">Update every</label>
         <select
           id="refreshSeconds"
-          value={filters.refreshSeconds || 30}
+          value={filters.refreshSeconds || 15}
           disabled={!filters.autoRefresh}
           onChange={(e) => updateFilter('refreshSeconds', Number(e.target.value))}
         >

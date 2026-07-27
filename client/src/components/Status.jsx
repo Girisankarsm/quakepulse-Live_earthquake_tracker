@@ -6,7 +6,7 @@ export function StatusBar({
   error,
   autoRefresh = true,
   secondsToRefresh = null,
-  refreshSeconds = 30,
+  refreshSeconds = 15,
   partialErrors = [],
 }) {
   if (!summary && !error) return null;
