@@ -70,7 +70,7 @@ const model = trainRiskModel(events, {
   magThreshold: threshold,
   persist: true,
   forcePersist: true,
-  maxSamples: 40_000,
+  maxSamples: 28_000,
 });
 const path = saveModel(model);
 console.log(`Done in ${((Date.now() - started) / 1000).toFixed(1)}s`);
