@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="220" viewBox="0 0 920 220" role="img" aria-label="QuakePulse data flow">
+  <defs>
+    <linearGradient id="card" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1c2632"/>
+      <stop offset="100%" stop-color="#15202b"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#4a9b8e"/>
+    </marker>
+  </defs>
+
+  <rect width="920" height="220" rx="18" fill="#101820"/>
+  <rect x="1" y="1" width="918" height="218" rx="17" fill="none" stroke="rgba(200,214,228,0.12)"/>
+
+  <!-- nodes -->
+  <g font-family="Outfit, Segoe UI, Helvetica, Arial, sans-serif">
+    <g transform="translate(40 70)">
+      <rect width="150" height="80" rx="14" fill="url(#card)" stroke="rgba(74,155,142,0.4)"/>
+      <text x="75" y="36" text-anchor="middle" fill="#9ed9ce" font-size="13" font-weight="700">USGS / EMSC</text>
+      <text x="75" y="56" text-anchor="middle" fill="#92a0b0" font-size="11">Live catalogs</text>
+      <circle cx="130" cy="18" r="4" fill="#6bbf9a">
+        <animate attributeName="opacity" values="1;0.3;1" dur="1.4s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+
+    <g transform="translate(255 70)">
+      <rect width="150" height="80" rx="14" fill="url(#card)" stroke="rgba(110,163,196,0.4)"/>
+      <text x="75" y="36" text-anchor="middle" fill="#6ea3c4" font-size="13" font-weight="700">Express API</text>
+      <text x="75" y="56" text-anchor="middle" fill="#92a0b0" font-size="11">Cache · analytics</text>
+    </g>
+
+    <g transform="translate(470 70)">
+      <rect width="150" height="80" rx="14" fill="url(#card)" stroke="rgba(201,166,107,0.4)"/>
+      <text x="75" y="36" text-anchor="middle" fill="#c9a66b" font-size="13" font-weight="700">ML Risk Model</text>
+      <text x="75" y="56" text-anchor="middle" fill="#92a0b0" font-size="11">Nowcast · clusters</text>
+    </g>
+
+    <g transform="translate(685 70)">
+      <rect width="180" height="80" rx="14" fill="url(#card)" stroke="rgba(158,217,206,0.45)"/>
+      <text x="90" y="36" text-anchor="middle" fill="#e9eef4" font-size="13" font-weight="700">React Workspace</text>
+      <text x="90" y="56" text-anchor="middle" fill="#92a0b0" font-size="11">Map · KPIs · Alerts</text>
+    </g>
+  </g>
+
+  <!-- animated connectors -->
+  <g fill="none" stroke="#4a9b8e" stroke-width="2" marker-end="url(#arrow)">
+    <path d="M190 110 H250" stroke-dasharray="6 6">
+      <animate attributeName="stroke-dashoffset" values="24;0" dur="1s" repeatCount="indefinite"/>
+    </path>
+    <path d="M405 110 H465" stroke-dasharray="6 6">
+      <animate attributeName="stroke-dashoffset" values="24;0" dur="1s" begin="0.2s" repeatCount="indefinite"/>
+    </path>
+    <path d="M620 110 H680" stroke-dasharray="6 6">
+      <animate attributeName="stroke-dashoffset" values="24;0" dur="1s" begin="0.4s" repeatCount="indefinite"/>
+    </path>
+  </g>
+
+  <!-- traveling pulse dots -->
+  <circle r="4" fill="#9ed9ce">
+    <animateMotion dur="1.8s" repeatCount="indefinite" path="M190 110 H250"/>
+  </circle>
+  <circle r="4" fill="#6ea3c4">
+    <animateMotion dur="1.8s" begin="0.25s" repeatCount="indefinite" path="M405 110 H465"/>
+  </circle>
+  <circle r="4" fill="#c9a66b">
+    <animateMotion dur="1.8s" begin="0.5s" repeatCount="indefinite" path="M620 110 H680"/>
+  </circle>
+
+  <text x="460" y="200" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, monospace" font-size="11" fill="#6d7c8d" letter-spacing="1">60s cache · auto-refresh · mobile-first UI</text>
+</svg>

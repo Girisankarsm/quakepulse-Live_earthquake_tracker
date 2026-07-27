@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="48" viewBox="0 0 720 48" role="img" aria-label="Seismic wave divider">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#4a9b8e" stop-opacity="0"/>
+      <stop offset="20%" stop-color="#4a9b8e" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#9ed9ce" stop-opacity="1"/>
+      <stop offset="80%" stop-color="#c9a66b" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#c9a66b" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <path
+    d="M0 24 C40 24 50 24 80 24 C110 24 120 6 150 6 C180 6 190 42 220 42 C250 42 260 14 290 14 C320 14 330 36 360 36 C390 36 400 10 430 10 C460 10 470 38 500 38 C530 38 540 18 570 18 C600 18 610 24 640 24 C670 24 690 24 720 24"
+    fill="none"
+    stroke="url(#g)"
+    stroke-width="2.5"
+    stroke-linecap="round"
+    stroke-dasharray="720"
+    stroke-dashoffset="720">
+    <animate attributeName="stroke-dashoffset" values="720;0;720" dur="4.5s" repeatCount="indefinite"/>
+  </path>
+  <circle r="3.5" fill="#4a9b8e">
+    <animateMotion dur="4.5s" repeatCount="indefinite" path="M0 24 C40 24 50 24 80 24 C110 24 120 6 150 6 C180 6 190 42 220 42 C250 42 260 14 290 14 C320 14 330 36 360 36 C390 36 400 10 430 10 C460 10 470 38 500 38 C530 38 540 18 570 18 C600 18 610 24 640 24 C670 24 690 24 720 24"/>
+  </circle>
+</svg>
