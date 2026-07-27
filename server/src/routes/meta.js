@@ -41,7 +41,7 @@ router.get('/meta', (_req, res) => {
       { id: 'data', label: 'Data', description: 'Registry & export' },
     ],
     ml: {
-      version: '3.1.0',
+      version: '3.2.0',
       endpoints: [
         '/api/ml/model',
         '/api/ml/predict',

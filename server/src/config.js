@@ -53,7 +53,7 @@ export const DATA_SOURCES = {
 
 export const DATASET_DIR = path.resolve(__configDir, '../data');
 export const MODEL_DIR = path.resolve(__configDir, '../models');
-export const MODEL_VERSION = '3.1.0';
+export const MODEL_VERSION = '3.2.0';
 
 /** Auto collect→train loop (network catalogs → retrain). Default ON; set AUTO_TRAIN=0 to disable. */
 export const AUTO_TRAIN_ENABLED =
