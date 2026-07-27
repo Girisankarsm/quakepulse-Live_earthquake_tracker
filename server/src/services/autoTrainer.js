@@ -91,7 +91,7 @@ export async function runCollectAndTrain(opts = {}) {
       magThreshold: 4.0,
       persist: true,
       forcePersist: true,
-      maxSamples: 20_000,
+      maxSamples: 30_000,
     });
 
     state.runCount += 1;

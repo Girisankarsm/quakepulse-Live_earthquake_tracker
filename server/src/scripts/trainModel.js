@@ -20,10 +20,10 @@ function arg(name, fallback) {
 
 const feedOnly = process.argv.includes('--feed');
 const useCache = process.argv.includes('--cache');
-const days = Number(arg('--days', '90'));
-const minMag = Number(arg('--min-mag', '2.5'));
+const days = Number(arg('--days', '120'));
+const minMag = Number(arg('--min-mag', '2.0'));
 const feed = arg('--feed', 'month');
-const epochs = Number(arg('--epochs', '45'));
+const epochs = Number(arg('--epochs', '50'));
 const horizon = Number(arg('--horizon', '6'));
 const threshold = Number(arg('--threshold', '4.0'));
 
@@ -70,7 +70,7 @@ const model = trainRiskModel(events, {
   magThreshold: threshold,
   persist: true,
   forcePersist: true,
-  maxSamples: 20_000,
+  maxSamples: 30_000,
 });
 const path = saveModel(model);
 console.log(`Done in ${((Date.now() - started) / 1000).toFixed(1)}s`);

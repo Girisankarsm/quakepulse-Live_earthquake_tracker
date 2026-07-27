@@ -10,6 +10,7 @@ import {
 import {
   downloadTrainingDataset,
   loadPersistedDataset,
+  getDatasetStats,
 } from '../services/datasets.js';
 import {
   getAutoTrainStatus,
@@ -50,6 +51,15 @@ router.get('/model', (_req, res) => {
 
 router.get('/auto-train', (_req, res) => {
   res.json(getAutoTrainStatus());
+});
+
+router.get('/dataset', async (_req, res, next) => {
+  try {
+    const stats = await getDatasetStats();
+    res.json(stats);
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.post('/auto-train/start', (_req, res) => {
@@ -131,8 +141,8 @@ router.get('/predict', async (req, res, next) => {
 
 router.post('/train', async (req, res, next) => {
   try {
-    const days = Math.min(Math.max(Number(req.body?.days) || 90, 7), 120);
-    const minMagnitude = Number(req.body?.minMagnitude) || 2.5;
+    const days = Math.min(Math.max(Number(req.body?.days) || 120, 7), 180);
+    const minMagnitude = Number(req.body?.minMagnitude) || 2.0;
     const useCache = req.body?.useCache === true;
     const feedOnly = req.body?.feedOnly === true;
 
@@ -163,12 +173,12 @@ router.post('/train', async (req, res, next) => {
     }
 
     const model = trainRiskModel(events, {
-      epochs: Number(req.body?.epochs) || 45,
+      epochs: Number(req.body?.epochs) || 50,
       horizonHours: Number(req.body?.horizonHours) || 6,
       magThreshold: Number(req.body?.magThreshold) || 4.0,
       persist: true,
       forcePersist: true,
-      maxSamples: 20_000,
+      maxSamples: 30_000,
     });
 
     res.json({
