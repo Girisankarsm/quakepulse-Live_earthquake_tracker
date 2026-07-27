@@ -136,13 +136,13 @@ export function QuakeMap({ events, mode = 'cluster', tall = false, autoFit = tru
       </MapContainer>
       <div className="map-legend" aria-hidden>
         <span>
-          <i style={{ background: '#3ecf8e' }} /> M&lt;2.5
+          <i style={{ background: '#6bbf9a' }} /> M&lt;2.5
         </span>
         <span>
-          <i style={{ background: '#e8b339' }} /> 2.5–5
+          <i style={{ background: '#d4b56a' }} /> 2.5–5
         </span>
         <span>
-          <i style={{ background: '#ef6b6b' }} /> M≥5
+          <i style={{ background: '#e08a8a' }} /> M≥5
         </span>
       </div>
     </div>
