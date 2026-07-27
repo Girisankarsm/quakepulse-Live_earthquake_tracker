@@ -242,6 +242,9 @@ export function PredictPage({
               </span>
               <span className="chip">
                 Acc {accuracy == null ? '—' : `${Math.round(Number(accuracy) * 100)}%`}
+                {metrics?.precision != null
+                  ? ` · P ${Math.round(metrics.precision * 100)}%`
+                  : ''}
                 {metrics?.f1 != null ? ` · F1 ${Math.round(metrics.f1 * 100)}%` : ''}
               </span>
               <span className="chip">
