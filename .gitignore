@@ -8,16 +8,16 @@ dist/
 build/
 coverage/
 *.tsbuildinfo
-.vite/
 
 # Env & secrets
 .env
 .env.*
 !.env.example
 
-# Runtime ML artifacts
-server/data/
+# ML artifacts
 server/models/
+server/data/
+*.json.bak
 
 # Python (legacy)
 __pycache__/

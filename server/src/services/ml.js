@@ -151,23 +151,40 @@ export function trainRiskModel(events = [], opts = {}) {
   };
 
   mlCache.set(WEIGHTS_KEY, model, 600);
-  if (persist) saveModel(model);
+  if (persist) {
+    const existing = readModelFile();
+    const existingSamples = existing?.samples || 0;
+    // Never let a tiny live-window train clobber a catalog-trained model
+    if (opts.forcePersist || model.samples >= existingSamples || existingSamples === 0) {
+      saveModel(model);
+    }
+  }
   return model;
 }
 
-export function loadModel() {
-  const cached = mlCache.get(WEIGHTS_KEY);
-  if (cached?.weights) return cached;
-
+function readModelFile() {
   try {
-    const raw = fs.readFileSync(MODEL_PATH(), 'utf8');
-    const model = JSON.parse(raw);
-    if (model?.weights) {
-      mlCache.set(WEIGHTS_KEY, model, 600);
-      return model;
-    }
+    return JSON.parse(fs.readFileSync(MODEL_PATH(), 'utf8'));
   } catch {
-    // no persisted model yet
+    return null;
+  }
+}
+
+export function loadModel() {
+  const disk = readModelFile();
+  const cached = mlCache.get(WEIGHTS_KEY);
+
+  // Prefer the stronger of disk vs cache (by labeled sample count)
+  const pick =
+    disk?.weights && (!cached?.weights || (disk.samples || 0) >= (cached.samples || 0))
+      ? disk
+      : cached?.weights
+        ? cached
+        : disk;
+
+  if (pick?.weights) {
+    mlCache.set(WEIGHTS_KEY, pick, 600);
+    return pick;
   }
 
   return {

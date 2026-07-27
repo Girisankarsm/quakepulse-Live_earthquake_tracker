@@ -147,8 +147,8 @@ export function AnalyticsPage({ analytics }) {
           </span>
         </div>
         <p style={{ margin: '0 0 0.75rem', fontSize: '0.84rem', color: 'var(--text-muted)' }}>
-          Logistic activity-risk model trained on this window ({p?.model?.trainedOn || 0} events).
-          Features: magnitude, rate, shallow ratio, clustering, energy.
+          Logistic early-activity risk model on this window ({p?.model?.trainedOn || 0}{' '}
+          samples/events). Scores short-horizon elevated activity — not exact quake timing.
         </p>
         {(p?.regions || []).slice(0, 6).map((r) => (
           <div key={r.region} className="data-row">
@@ -157,8 +157,11 @@ export function AnalyticsPage({ analytics }) {
               <span className={`risk-badge risk-${r.level}`}>{r.riskScore}</span>
             </div>
             <div className="meta">
-              {r.eventCount} events · max M{r.maxMagnitude} · {r.ratePerHour}/hr · shallow{' '}
-              {Math.round(r.shallowRatio * 100)}%
+              {r.eventCount} events · max M{r.maxMagnitude}
+              {r.ratePerHour != null ? ` · ${r.ratePerHour}/hr` : ''}
+              {r.shallowRatio != null
+                ? ` · shallow ${Math.round(r.shallowRatio * 100)}%`
+                : ''}
             </div>
           </div>
         ))}

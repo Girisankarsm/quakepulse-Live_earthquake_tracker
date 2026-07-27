@@ -49,7 +49,7 @@ router.get('/patterns', async (req, res, next) => {
 
     let model = loadModel();
     if (retrain || !model.trainedAt) {
-      model = trainRiskModel(events, { persist: true });
+      model = trainRiskModel(events, { persist: Boolean(retrain), forcePersist: Boolean(retrain) });
     }
 
     const patterns = analyzePatterns(events, model);
@@ -74,7 +74,7 @@ router.get('/predict', async (req, res, next) => {
     });
     let model = loadModel();
     if (!model.trainedAt) {
-      model = trainRiskModel(events, { persist: true });
+      model = trainRiskModel(events, { persist: false });
     }
     const prediction = predictRisk(events, model);
     res.json({
@@ -126,6 +126,7 @@ router.post('/train', async (req, res, next) => {
       horizonHours: Number(req.body?.horizonHours) || 6,
       magThreshold: Number(req.body?.magThreshold) || 4.5,
       persist: true,
+      forcePersist: true,
     });
 
     res.json({

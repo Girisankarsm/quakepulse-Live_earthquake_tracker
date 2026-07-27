@@ -12,6 +12,7 @@ const DEFAULT_FILTERS = {
 
 export function useQuakeData() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [debouncedPlace, setDebouncedPlace] = useState('');
   const [summary, setSummary] = useState(null);
   const [events, setEvents] = useState(null);
   const [analytics, setAnalytics] = useState(null);
@@ -23,6 +24,11 @@ export function useQuakeData() {
   const [boot, setBoot] = useState(true);
   const first = useRef(true);
 
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedPlace(filters.place.trim()), 350);
+    return () => clearTimeout(id);
+  }, [filters.place]);
+
   const params = {
     period: filters.period,
     minMagnitude: filters.minMagnitude,
@@ -30,7 +36,7 @@ export function useQuakeData() {
       filters.maxDepth === '' || filters.maxDepth == null || filters.maxDepth >= 700
         ? undefined
         : filters.maxDepth,
-    place: filters.place || undefined,
+    place: debouncedPlace || undefined,
     alertThreshold: filters.alertThreshold,
   };
 
@@ -40,15 +46,13 @@ export function useQuakeData() {
       else setLoading(true);
       setError(null);
       try {
-        const [sum, eqs, an, al] = await Promise.all([
+        const [sum, eqs, an, al, nw] = await Promise.all([
           api.summary(params),
           api.earthquakes({ ...params, limit: 2000 }),
           api.analytics(params),
           api.alerts(params),
+          api.news({ region: debouncedPlace, limit: 20 }),
         ]);
-        const regionHint =
-          filters.place || sum?.regions?.[0]?.region || an?.regions?.[0]?.region || '';
-        const nw = await api.news({ region: regionHint, limit: 24 });
         setSummary(sum);
         setEvents(eqs);
         setAnalytics(an);
@@ -72,10 +76,14 @@ export function useQuakeData() {
       filters.period,
       filters.minMagnitude,
       filters.maxDepth,
-      filters.place,
+      debouncedPlace,
       filters.alertThreshold,
     ],
   );
+
+  useEffect(() => {
+    load().catch(() => {});
+  }, [load]);
 
   useEffect(() => {
     if (!filters.autoRefresh) return undefined;
@@ -84,10 +92,6 @@ export function useQuakeData() {
     }, 60_000);
     return () => clearInterval(id);
   }, [filters.autoRefresh, load]);
-
-  useEffect(() => {
-    load().catch(() => {});
-  }, [load]);
 
   const updateFilter = (key, value) => {
     setFilters((f) => ({ ...f, [key]: value }));

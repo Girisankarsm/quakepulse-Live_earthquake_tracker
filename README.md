@@ -1,31 +1,49 @@
 # QuakePulse — Global Seismic Intelligence Platform
 
 [![CI](https://github.com/Girisankarsm/quakepulse-Live_earthquake_tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/Girisankarsm/quakepulse-Live_earthquake_tracker/actions/workflows/ci.yml)
-[![Node.js](https://img.shields.io/badge/node.js-18%2B-teal.svg)](https://nodejs.org/)
-[![React](https://img.shields.io/badge/react-19-blue.svg)](https://react.dev/)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org/)
 
-**QuakePulse v3** — mobile-first live earthquake intelligence built with **Node.js + React** (Streamlit retired).
+Enterprise-grade live earthquake monitoring — mobile-first React UI, Express intelligence API, depth analytics, ML activity-risk nowcasting, and seismic news.
+
+## Overview
+
+QuakePulse transforms USGS (and multi-catalog) earthquake data into a polished seismic intelligence workspace: executive KPIs, clustered maps, depth profiles, threshold alerts, regional news, and a lightweight early-activity risk model.
 
 ## Features
 
 | Capability | Description |
 |------------|-------------|
-| **Mobile-first UI** | Bottom nav · filter drawer · large tap targets · desktop sidebar |
-| **Live USGS pipeline** | Hour / day / week / month feeds · 60s cache · auto-refresh |
-| **Deep analytics** | Temporal patterns · depth profiles · regional rankings · energy curves |
-| **ML pattern engine** | Logistic early-activity risk model · k-means cells · anomaly detection |
-| **News tab** | Google News + USGS + GDACS stories matched to active regions |
-| **Alerts & export** | Threshold monitor · CSV event registry |
-| **Hardened API** | Rate limiting · timeouts · typed errors · graceful cache fallback |
+| **Mobile-first UI** | Bottom nav · filter sheet · responsive desktop rail |
+| **Live pipeline** | USGS GeoJSON · 60s server cache · auto-refresh |
+| **Executive KPIs** | Events, magnitude, energy, shallow ratio |
+| **Workspace** | Overview · Map · Analytics · Alerts · News · Data |
+| **Depth analysis** | Bin profiles, scatter, crustal vs deep insights |
+| **ML patterns** | Logistic early-activity risk · regional forecasts · anomalies · k-means clusters |
+| **News** | USGS / GDACS / Google News seismic coverage |
+| **Export** | One-click CSV |
+| **Resilient API** | Timeouts, rate limits, typed errors |
 
-## Quick start
+## Architecture
+
+```
+quakepulse/
+├── client/                 # React + Vite + Leaflet + Recharts
+├── server/                 # Express API
+│   └── src/
+│       ├── routes/         # earthquakes · news · ml · meta
+│       ├── services/       # usgs · analytics · ml · news · datasets
+│       └── middleware/     # rate limit · errors
+└── .github/workflows/      # CI
+```
+
+## Quick Start
 
 ```bash
 npm install
 npm run dev
 ```
 
-- UI: http://localhost:5173  
+- Client: http://localhost:5173  
 - API: http://localhost:3001  
 
 Production:
@@ -35,64 +53,15 @@ npm run build
 npm start
 ```
 
-Train the risk model:
+## Train pattern model
 
 ```bash
-npm run train -w server -- --feed day
-# or multi-catalog download:
-npm run train -w server -- --days 30 --min-mag 2.5
+# From live USGS feed
+npm run train -- --feed week
+
+# Multi-catalog download (USGS · EMSC · IRIS)
+npm run train -- --days 30 --min-mag 2.5
 ```
-
-## Architecture
-
-```
-├── server/                 Express API
-│   └── src/
-│       ├── services/       USGS · analytics · ML · news · datasets
-│       ├── routes/         earthquakes · ml · news · meta
-│       └── scripts/        model training CLI
-├── client/                 React + Vite mobile UI
-│   └── src/
-│       ├── pages/          Overview · Map · Analytics · News · Alerts · Data
-│       ├── components/     Map · charts · filters · nav
-│       └── hooks/          Live data pipeline
-└── .github/workflows/      CI (test + build)
-```
-
-## API
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/health` | Health check |
-| `GET /api/meta` | App metadata & nav |
-| `GET /api/earthquakes` | Filtered events |
-| `GET /api/earthquakes/summary` | KPIs + overview series |
-| `GET /api/earthquakes/analytics` | Deep analytics + ML patterns |
-| `GET /api/earthquakes/alerts` | Threshold alerts |
-| `GET /api/ml/patterns` | Clusters, risk, anomalies |
-| `POST /api/ml/train` | Retrain early-risk model |
-| `GET /api/news` | Regional / global seismic news |
-
-Query params: `period` (`hour`\|`day`\|`week`\|`month`), `minMagnitude`, `maxDepth`, `place`, `alertThreshold`.
-
-## App tabs
-
-| Tab | Purpose |
-|-----|---------|
-| **Overview** | KPIs, trends, energy, pattern insights |
-| **Map** | Clustered Leaflet map + depth scatter |
-| **Analytics** | Depth, regions, ML risk & anomalies |
-| **Alerts** | Magnitude threshold monitor |
-| **News** | Area-matched earthquake journalism |
-| **Data** | Event registry + CSV export |
-
-## Tech stack
-
-- **Backend:** Node.js, Express, node-cache, rss-parser
-- **Frontend:** React 19, Vite, Recharts, Leaflet + marker clustering
-- **ML:** In-process logistic early-activity risk model + k-means + z-score anomalies
-- **Data:** USGS feeds · optional USGS/EMSC/IRIS FDSN for training
-- **News:** Google News RSS · USGS Newsroom · GDACS
 
 ## Tests
 
@@ -100,9 +69,32 @@ Query params: `period` (`hour`\|`day`\|`week`\|`month`), `minMagnitude`, `maxDep
 npm test
 ```
 
+## API
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/health` | Health check |
+| `GET /api/earthquakes/summary` | KPIs + overview series |
+| `GET /api/earthquakes` | Filtered event list |
+| `GET /api/earthquakes/analytics` | Depth, regions, ML patterns |
+| `GET /api/earthquakes/alerts` | Threshold alerts |
+| `GET /api/news` | Seismic news (`?region=`) |
+| `GET /api/ml/model` | Persisted model metadata |
+| `GET /api/ml/patterns` | Pattern + risk analysis |
+| `GET /api/ml/predict` | Near-term regional risk forecast |
+
+Query params (earthquakes): `period`, `minMagnitude`, `maxDepth`, `place`, `alertThreshold`.
+
+## Tech Stack
+
+- **Frontend:** React 19, Vite, Leaflet, Recharts
+- **Backend:** Node.js, Express, node-cache, rss-parser
+- **ML:** Pure-JS logistic early-activity risk + k-means (no paid APIs)
+- **Sources:** [USGS](https://earthquake.usgs.gov/fdsnws/event/1/), EMSC, IRIS
+
 ## Disclaimer
 
-For informational and analytical purposes only. Not intended for operational emergency response. The ML module is a short-horizon activity nowcast — not a deterministic earthquake predictor.
+For informational and analytical purposes only. Not intended for operational emergency response. The ML module nowcasts elevated short-horizon activity risk — it does **not** predict exact earthquake timing or location.
 
 ## License
 
