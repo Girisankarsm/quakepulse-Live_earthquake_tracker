@@ -41,12 +41,13 @@ router.get('/meta', (_req, res) => {
       { id: 'data', label: 'Data', description: 'Registry & export' },
     ],
     ml: {
-      version: '3.0.0',
+      version: '3.1.0',
       endpoints: [
         '/api/ml/model',
         '/api/ml/predict',
         '/api/ml/patterns',
         '/api/ml/train',
+        '/api/ml/dataset',
         '/api/ml/auto-train',
       ],
       autoTrain: true,
