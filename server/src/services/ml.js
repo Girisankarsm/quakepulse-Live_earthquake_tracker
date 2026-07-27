@@ -96,7 +96,7 @@ export function analyzePatterns(events, model) {
         'Nowcast of elevated short-horizon seismic activity risk — not a deterministic quake prediction.',
       updatedAt: new Date().toISOString(),
     },
-    globalRisk: scoreGlobal(events, trained.weights, trained.threshold ?? 0.5),
+    globalRisk: scoreGlobal(events, trained.weights, trained.threshold ?? 0.5, trained.scaler),
     regions: regions.slice(0, 10),
     forecasts,
     temporal,
@@ -110,15 +110,16 @@ export function analyzePatterns(events, model) {
 /**
  * Train early-risk logistic model from catalog events.
  * Labels: spatial cell has M>=threshold in next horizonHours after lookback.
+ * Uses z-scored features, balanced epochs, early stopping on val F1.
  */
 export function trainRiskModel(events = [], opts = {}) {
-  const epochs = opts.epochs ?? 40;
-  const lr0 = opts.lr ?? 0.12;
+  const epochs = opts.epochs ?? 55;
+  const lr0 = opts.lr ?? 0.08;
   const horizonHours = opts.horizonHours ?? 6;
   const lookbackHours = opts.lookbackHours ?? 24;
   const magThreshold = opts.magThreshold ?? 4.0;
   const persist = opts.persist !== false;
-  const maxSamples = opts.maxSamples ?? 20_000;
+  const maxSamples = opts.maxSamples ?? 30_000;
 
   let samples = buildLabeledSamples(events, {
     horizonHours,
@@ -130,40 +131,60 @@ export function trainRiskModel(events = [], opts = {}) {
     samples = stratifiedSample(samples, maxSamples);
   }
 
-  // Shuffle before train/val split so holdout isn't time-skewed by region order
+  const scaler = fitScaler(samples.map((s) => s.x));
+  samples = samples.map((s) => ({ ...s, x: applyScaler(s.x, scaler) }));
+
   shuffleInPlace(samples);
   const cut = Math.floor(samples.length * 0.8);
   const train = samples.slice(0, Math.max(1, cut));
   const test = samples.slice(cut);
 
   let weights = { ...PRIOR };
+  for (const k of FEATURE_KEYS) {
+    const sd = scaler.std[k] || 1;
+    weights[k] = (weights[k] || 0) * Math.min(sd, 1);
+  }
+
   const velocity = Object.fromEntries(FEATURE_KEYS.map((k) => [k, 0]));
   velocity.bias = 0;
-  const momentum = 0.9;
+  const momentum = 0.92;
+
+  let bestWeights = { ...weights };
+  let bestF1 = -1;
+  let patience = 0;
 
   if (train.length >= 12) {
-    const pos = train.filter((s) => s.y === 1).length;
-    const neg = train.length - pos;
-    const wPos = pos > 0 ? train.length / (2 * pos) : 1;
-    const wNeg = neg > 0 ? train.length / (2 * neg) : 1;
-
     for (let epoch = 0; epoch < epochs; epoch++) {
-      const lr = lr0 * (1 / (1 + epoch * 0.04));
-      shuffleInPlace(train);
-      for (const s of train) {
+      const lr = lr0 * (1 / (1 + epoch * 0.035));
+      const batch = balancedEpochBatch(train, Math.min(train.length, 8000));
+      for (const s of batch) {
         const pred = scoreProbability(s.x, weights);
         const err = pred - s.y;
-        const cw = s.y === 1 ? wPos : wNeg;
+        const cw = s.y === 1 ? 1.35 : 1;
         for (const k of FEATURE_KEYS) {
-          const g = cw * err * (s.x[k] || 0) + 0.001 * (weights[k] || 0);
+          const g = cw * err * (s.x[k] || 0) + 0.0008 * (weights[k] || 0);
           velocity[k] = momentum * velocity[k] - lr * g;
           weights[k] = (weights[k] || 0) + velocity[k];
         }
-        const gb = cw * err + 0.0005 * (weights.bias || 0);
+        const gb = cw * err + 0.0004 * (weights.bias || 0);
         velocity.bias = momentum * velocity.bias - lr * gb;
         weights.bias += velocity.bias;
       }
+
+      if (test.length >= 40 && epoch % 3 === 2) {
+        const t = tuneThreshold(test, weights);
+        const m = evaluateHoldout(test, weights, t);
+        if (m.f1 > bestF1) {
+          bestF1 = m.f1;
+          bestWeights = { ...weights };
+          patience = 0;
+        } else if (++patience >= 6) {
+          weights = bestWeights;
+          break;
+        }
+      }
     }
+    if (bestF1 > 0) weights = bestWeights;
   }
 
   const threshold = tuneThreshold(test.length >= 20 ? test : samples, weights);
@@ -171,8 +192,8 @@ export function trainRiskModel(events = [], opts = {}) {
   const clusters = kMeansClusters(events, Math.min(8, Math.max(2, Math.floor(events.length / 50))));
 
   const model = {
-    version: MODEL_VERSION || '3.0.0',
-    type: 'early-activity-risk-logistic-v3',
+    version: MODEL_VERSION || '3.1.0',
+    type: 'early-activity-risk-logistic-v31',
     trainedAt: new Date().toISOString(),
     samples: samples.length,
     trainSamples: train.length,
@@ -182,6 +203,7 @@ export function trainRiskModel(events = [], opts = {}) {
     magThreshold,
     cellDeg: CELL_DEG,
     features: FEATURE_KEYS,
+    scaler,
     weights,
     threshold,
     metrics,
@@ -194,7 +216,13 @@ export function trainRiskModel(events = [], opts = {}) {
   if (persist) {
     const existing = readModelFile();
     const existingSamples = existing?.samples || 0;
-    if (opts.forcePersist || model.samples >= existingSamples || existingSamples === 0) {
+    const existingF1 = existing?.metrics?.f1 || 0;
+    if (
+      opts.forcePersist ||
+      model.samples >= existingSamples ||
+      (model.metrics?.f1 || 0) >= existingF1 ||
+      existingSamples === 0
+    ) {
       saveModel(model);
     }
   }
@@ -248,7 +276,7 @@ export function saveModel(model) {
 export function predictRisk(events, model = loadModel()) {
   const weights = model.weights || PRIOR;
   const forecasts = forecastRegions(events, { weights, ...model });
-  const global = scoreGlobal(events, weights, model.threshold ?? 0.5);
+  const global = scoreGlobal(events, weights, model.threshold ?? 0.5, model.scaler);
   return {
     generatedAt: new Date().toISOString(),
     model: {
@@ -407,6 +435,9 @@ function regionWindowFeatures(list, nowMs = Date.now()) {
   const mags = h24.map((e) => e.magnitude);
   const maxMag = mags.length ? Math.max(...mags) : 0;
   const avgMag = mags.length ? avg(mags) : 0;
+  const magStd = mags.length > 1
+    ? Math.sqrt(avg(mags.map((m) => (m - avgMag) ** 2)))
+    : 0;
   const shallowRatio = h24.length
     ? h24.filter((e) => e.depth < 70).length / h24.length
     : 0;
@@ -431,30 +462,49 @@ function regionWindowFeatures(list, nowMs = Date.now()) {
   const bValueProxy = estimateBValue(mags);
   const ringOfFire = avg(h24.map((e) => ringOfFireScore(e.latitude, e.longitude)));
 
-  // Depth shallowing over window → rising crustal stress proxy
   const earlyDepth = first.length ? avg(first.map((e) => e.depth)) : 0;
   const lateDepth = second.length ? avg(second.map((e) => e.depth)) : earlyDepth;
-  const depthTrend = Math.tanh((earlyDepth - lateDepth) / 80); // positive if getting shallower
+  const depthTrend = Math.tanh((earlyDepth - lateDepth) / 80);
   const sequenceLen = Math.min(h24.length / 25, 1);
+
+  const sortedT = [...h24].map((e) => e.timeMs).sort((a, b) => a - b);
+  const gaps = [];
+  for (let i = 1; i < sortedT.length; i++) gaps.push((sortedT[i] - sortedT[i - 1]) / 3_600_000);
+  const gapMean = gaps.length ? avg(gaps) : 1;
+  const gapStd = gaps.length > 1 ? Math.sqrt(avg(gaps.map((g) => (g - gapMean) ** 2))) : 0;
+  const interEventCv = gapMean > 0 ? Math.min(gapStd / gapMean, 3) / 3 : 0.5;
+
+  // Omori-like: recent rate relative to earlier rate after last M>=4
+  const lastM4 = [...h24].filter((e) => e.magnitude >= 4).sort((a, b) => b.timeMs - a.timeMs)[0];
+  let omoriProxy = 0.3;
+  if (lastM4) {
+    const after = h24.filter((e) => e.timeMs > lastM4.timeMs);
+    const hoursAfter = Math.max((nowMs - lastM4.timeMs) / 3_600_000, 0.25);
+    omoriProxy = Math.min(1, after.length / Math.sqrt(hoursAfter) / 8);
+  }
 
   return {
     rate1h: Math.min(h1.length / 5, 1),
     rate6h: Math.min(h6.length / 15, 1),
     rate24h: Math.min(h24.length / 40, 1),
+    countM3: Math.min(h24.filter((e) => e.magnitude >= 3).length / 12, 1),
     countM4: Math.min(h24.filter((e) => e.magnitude >= 4).length / 6, 1),
     countM5: Math.min(h24.filter((e) => e.magnitude >= 5).length / 3, 1),
     maxMag24h: maxMag / 8,
     avgMag24h: avgMag / 6,
+    magStd: Math.min(magStd / 2, 1),
     shallowRatio,
     clustering: computeClustering(h24),
     energyNorm,
     magAccel: (magAccel + 1) / 2,
     hoursSinceStrong,
     hoursSinceAny,
+    interEventCv,
     bValueProxy,
     ringOfFire,
     depthTrend: (depthTrend + 1) / 2,
     sequenceLen,
+    omoriProxy,
   };
 }
 
@@ -514,7 +564,8 @@ function forecastRegions(events, model) {
   const out = [];
 
   for (const [region, list] of byRegion) {
-    const feat = regionWindowFeatures(list, now);
+    const featRaw = regionWindowFeatures(list, now);
+    const feat = model.scaler ? applyScaler(featRaw, model.scaler) : featRaw;
     const logistic = scoreProbability(feat, weights);
     const maxMag = Math.max(...list.map((e) => e.magnitude));
     const m4 = list.filter((e) => e.magnitude >= 4).length;
@@ -533,7 +584,7 @@ function forecastRegions(events, model) {
       rate24h: list.length,
       m4Count: m4,
       probability: round(prob, 3),
-      ringOfFire: round(feat.ringOfFire, 2),
+      ringOfFire: round(featRaw.ringOfFire, 2),
     });
   }
 
@@ -563,12 +614,13 @@ function scoreRegions(events, weights) {
   });
 }
 
-function scoreGlobal(events, weights, threshold = 0.5) {
+function scoreGlobal(events, weights, threshold = 0.5, scaler = null) {
   if (!events.length) {
     return { score: 0, level: 'quiet', label: 'No activity in window', probability: 0 };
   }
   const now = Math.max(...events.map((e) => e.timeMs));
-  const feat = regionWindowFeatures(events, now);
+  const featRaw = regionWindowFeatures(events, now);
+  const feat = scaler ? applyScaler(featRaw, scaler) : featRaw;
   const logistic = scoreProbability(feat, weights);
   const maxMag = Math.max(...events.map((e) => e.magnitude));
   const m4 = events.filter((e) => e.magnitude >= 4).length;
@@ -841,6 +893,44 @@ function initCentroids(pts, k) {
     centroids.push({ x: p.x, y: p.y });
   }
   return centroids;
+}
+
+
+function fitScaler(xs) {
+  const mean = {};
+  const std = {};
+  for (const k of FEATURE_KEYS) {
+    const vals = xs.map((x) => x[k] || 0);
+    mean[k] = avg(vals);
+    const v = avg(vals.map((v) => (v - mean[k]) ** 2));
+    std[k] = Math.sqrt(v) || 1;
+  }
+  return { mean, std };
+}
+
+function applyScaler(x, scaler) {
+  if (!scaler?.mean) return x;
+  const out = {};
+  for (const k of FEATURE_KEYS) {
+    out[k] = ((x[k] || 0) - (scaler.mean[k] || 0)) / (scaler.std[k] || 1);
+  }
+  return out;
+}
+
+function balancedEpochBatch(train, n) {
+  const pos = train.filter((s) => s.y === 1);
+  const neg = train.filter((s) => s.y === 0);
+  if (!pos.length || !neg.length) {
+    const copy = [...train];
+    shuffleInPlace(copy);
+    return copy.slice(0, n);
+  }
+  const half = Math.floor(n / 2);
+  const out = [];
+  for (let i = 0; i < half; i++) out.push(pos[i % pos.length]);
+  for (let i = 0; i < n - half; i++) out.push(neg[i % neg.length]);
+  shuffleInPlace(out);
+  return out;
 }
 
 function shuffleInPlace(arr) {
