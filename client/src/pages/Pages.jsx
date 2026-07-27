@@ -193,6 +193,7 @@ export function PredictPage({
   analytics,
   prediction,
   modelInfo,
+  dataset,
   training,
   onTrain,
 }) {
@@ -203,6 +204,8 @@ export function PredictPage({
   const clusters = p?.clusters || [];
   const metrics = modelInfo?.metrics || p?.model?.metrics;
   const accuracy = metrics?.accuracy ?? p?.model?.accuracyEstimate;
+  const depthBins = dataset?.depth?.bins || {};
+  const magBins = dataset?.magnitude?.bins || {};
 
   return (
     <>
@@ -238,15 +241,13 @@ export function PredictPage({
                 Horizon {prediction?.model?.horizonHours || modelInfo?.horizonHours || 6}h
               </span>
               <span className="chip">
-                Train acc{' '}
-                {accuracy == null ? '—' : `${Math.round(Number(accuracy) * 100)}%`}
+                Acc {accuracy == null ? '—' : `${Math.round(Number(accuracy) * 100)}%`}
+                {metrics?.f1 != null ? ` · F1 ${Math.round(metrics.f1 * 100)}%` : ''}
               </span>
               <span className="chip">
                 {modelInfo?.trainedAt
                   ? `Trained ${formatRelative(modelInfo.trainedAt)}`
-                  : p?.model?.trainedAt
-                    ? `Trained ${formatRelative(p.model.trainedAt)}`
-                    : 'Using live window'}
+                  : 'Using live window'}
               </span>
               {modelInfo?.autoTrain?.enabled ? (
                 <span className="chip">
@@ -267,6 +268,86 @@ export function PredictPage({
           </div>
         </div>
       </div>
+
+      {dataset?.loaded ? (
+        <div className="panel">
+          <div className="panel-head">
+            <h2 className="panel-title">Collected catalog</h2>
+            <span className="panel-sub">
+              {dataset.format} · {dataset.bytesLabel || '—'} · schema v
+              {dataset.schemaVersion ?? '—'}
+            </span>
+          </div>
+          <div className="chip-row" style={{ marginBottom: '0.85rem' }}>
+            <span className="chip">{Number(dataset.count || 0).toLocaleString()} events</span>
+            <span className="chip">
+              M4+ {dataset.magnitude?.m4Plus ?? 0} · M5+ {dataset.magnitude?.m5Plus ?? 0} · M6+{' '}
+              {dataset.magnitude?.m6Plus ?? 0}
+            </span>
+            <span className="chip">
+              Depth avg {dataset.depth?.avgKm ?? '—'} km · shallow {dataset.depth?.shallowPct ?? '—'}%
+            </span>
+            {dataset.window?.days ? (
+              <span className="chip">{dataset.window.days}d window</span>
+            ) : null}
+          </div>
+          <div className="chart-grid">
+            <div>
+              <h3 style={{ fontSize: '0.8rem', margin: '0 0 0.45rem' }}>Depth bins</h3>
+              {Object.entries(depthBins).map(([k, v]) => (
+                <div key={k} className="data-row" style={{ marginBottom: '0.35rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>{k} km</span>
+                    <strong>{v}</strong>
+                  </div>
+                  <div className="risk-bar" aria-hidden>
+                    <span
+                      style={{
+                        width: `${Math.min(100, (v / Math.max(1, dataset.count)) * 100 * 3)}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div>
+              <h3 style={{ fontSize: '0.8rem', margin: '0 0 0.45rem' }}>Magnitude bins</h3>
+              {Object.entries(magBins).map(([k, v]) => (
+                <div key={k} className="data-row" style={{ marginBottom: '0.35rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>M {k}</span>
+                    <strong>{v}</strong>
+                  </div>
+                  <div className="risk-bar" aria-hidden>
+                    <span
+                      style={{
+                        width: `${Math.min(100, (v / Math.max(1, dataset.count)) * 100 * 3)}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          {(dataset.sample || []).length > 0 && (
+            <>
+              <h3 style={{ fontSize: '0.8rem', margin: '1rem 0 0.45rem' }}>Latest collected</h3>
+              {dataset.sample.slice(0, 6).map((e) => (
+                <div key={e.id} className="data-row">
+                  <strong className={`mag ${magClass(e.magnitude)}`}>
+                    M {Number(e.magnitude).toFixed(1)}
+                  </strong>{' '}
+                  · {e.place}
+                  <div className="meta">
+                    {e.depth} km · {formatTime(e.time)}
+                    {e.source ? ` · ${e.source}` : ''}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      ) : null}
 
       <div className="panel">
         <div className="panel-head">

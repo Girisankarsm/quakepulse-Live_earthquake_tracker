@@ -32,6 +32,7 @@ export function useQuakeData() {
   const [news, setNews] = useState(null);
   const [prediction, setPrediction] = useState(null);
   const [modelInfo, setModelInfo] = useState(null);
+  const [dataset, setDataset] = useState(null);
   const [training, setTraining] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -107,6 +108,8 @@ export function useQuakeData() {
           slots.push('predict');
           requests.push(api.model());
           slots.push('model');
+          requests.push(api.dataset().catch(() => null));
+          slots.push('dataset');
         }
 
         const results = await Promise.all(requests);
@@ -129,6 +132,9 @@ export function useQuakeData() {
         }
         if (bySlot.model) {
           setModelInfo(bySlot.model);
+        }
+        if (bySlot.dataset) {
+          setDataset(bySlot.dataset);
         }
 
         const synced = Date.now();
@@ -232,16 +238,18 @@ export function useQuakeData() {
     }));
   };
 
-  const trainModel = async (body = { days: 90, minMagnitude: 2.5 }) => {
+  const trainModel = async (body = { days: 120, minMagnitude: 2.0, epochs: 50 }) => {
     setTraining(true);
     try {
       const result = await api.train(body);
-      const [pred, model] = await Promise.all([
+      const [pred, model, ds] = await Promise.all([
         api.predict(buildParams(filtersRef.current, placeRef.current)),
         api.model(),
+        api.dataset().catch(() => null),
       ]);
       setPrediction(pred);
       setModelInfo(model);
+      if (ds) setDataset(ds);
       hasPrediction.current = true;
       lastPredictAt.current = Date.now();
       return result;
@@ -262,6 +270,7 @@ export function useQuakeData() {
     news,
     prediction,
     modelInfo,
+    dataset,
     training,
     trainModel,
     loading,

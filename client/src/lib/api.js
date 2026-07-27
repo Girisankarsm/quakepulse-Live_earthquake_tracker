@@ -38,7 +38,8 @@ export const api = {
   predict: (params) => request('/ml/predict', params),
   model: () => request('/ml/model'),
   news: (params) => request('/news', params),
-  train: async (body = { days: 90, minMagnitude: 2.5, epochs: 45 }) => {
+  dataset: () => request('/ml/dataset'),
+  train: async (body = { days: 120, minMagnitude: 2.0, epochs: 50 }) => {
     const res = await fetch(`${BASE}/ml/train`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },

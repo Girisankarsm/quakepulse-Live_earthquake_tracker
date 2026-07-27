@@ -62,8 +62,8 @@ export default function App() {
 
   async function handleTrain() {
     try {
-      await data.trainModel({ days: 90, minMagnitude: 2.5, epochs: 45 });
-      pushToast('Model retrained on 90-day multi-catalog data', 'success');
+      await data.trainModel({ days: 120, minMagnitude: 2.0, epochs: 50 });
+      pushToast('Model retrained on deeper multi-catalog data', 'success');
     } catch (err) {
       pushToast(err.message || 'Training failed', 'error');
     }
@@ -156,6 +156,7 @@ export default function App() {
                     analytics={data.analytics}
                     prediction={data.prediction}
                     modelInfo={data.modelInfo}
+                    dataset={data.dataset}
                     training={data.training}
                     onTrain={handleTrain}
                   />
