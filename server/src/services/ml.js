@@ -127,7 +127,7 @@ export function trainRiskModel(events = [], opts = {}) {
   const lookbackHours = opts.lookbackHours ?? 24;
   const magThreshold = opts.magThreshold ?? 4.0;
   const persist = opts.persist !== false;
-  const maxSamples = opts.maxSamples ?? 40_000;
+  const maxSamples = opts.maxSamples ?? 28_000;
 
   let samples = buildLabeledSamples(events, {
     horizonHours,
@@ -185,13 +185,13 @@ export function trainRiskModel(events = [], opts = {}) {
         const focal = 0.4 + Math.pow(Math.abs(err), 1.25);
         const cw = (s.y === 1 ? posWeight : 1) * focal;
         for (const k of FEATURE_KEYS) {
-          const g = cw * err * (s.x[k] || 0) + 0.0015 * (weights[k] || 0);
+          const g = cw * err * (s.x[k] || 0) + 0.006 * (weights[k] || 0);
           velocity[k] = momentum * velocity[k] - lr * g;
-          weights[k] = (weights[k] || 0) + velocity[k];
+          weights[k] = clamp(weights[k] + velocity[k], -2.8, 2.8);
         }
-        const gb = cw * err + 0.0006 * (weights.bias || 0);
+        const gb = cw * err + 0.0008 * (weights.bias || 0);
         velocity.bias = momentum * velocity.bias - lr * gb;
-        weights.bias += velocity.bias;
+        weights.bias = clamp(weights.bias + velocity.bias, -5, 1.5);
       }
 
       if (test.length >= 40 && epoch % 2 === 1) {
@@ -464,9 +464,10 @@ function buildLabeledSamples(events, { horizonHours, lookbackHours, magThreshold
       );
       if (hist.length < 2) continue;
       const histMax = Math.max(...hist.map((e) => e.magnitude));
-      // Cold-start quiet cells are not scientifically predictable — train on
-      // sequences with recent moderate activity (aftershock / swarm nowcast).
-      if (histMax < 3.0) continue;
+      const hadM4 = hist.some((e) => e.magnitude >= 4.0);
+      // Focus on aftershock / sequence continuation — the regime with real skill.
+      // Also keep strong swarms (max≥3.5 with ≥4 events) as secondary positives.
+      if (!hadM4 && !(histMax >= 3.5 && hist.length >= 4)) continue;
 
       const future = sorted.filter(
         (e) => e.timeMs >= t && e.timeMs < t + horizonHours * 3_600_000,
@@ -638,10 +639,10 @@ function forecastRegions(events, model) {
     const logistic = scoreProbability(feat, weights);
     const maxMag = Math.max(...list.map((e) => e.magnitude));
     const m4 = list.filter((e) => e.magnitude >= 4).length;
-    // Gate: microquake swarms without M≥4 should not look "elevated"
-    const magGate = Math.min(1, Math.max(0.15, (maxMag - 2.8) / 3.2));
-    const rateBoost = Math.min(1, m4 / 4) * 0.14 * magGate;
-    const prob = Math.min(0.99, (logistic * 0.9 + rateBoost + feat.ringOfFire * 0.05) * magGate + logistic * (1 - magGate) * 0.35);
+    // Soft blend — keep logistic as primary signal (avoid 0.99 saturation)
+    const magGate = Math.min(1, Math.max(0.25, (maxMag - 2.5) / 4));
+    const rateBoost = Math.min(0.08, (m4 / 6) * 0.08 * magGate);
+    const prob = Math.min(0.97, logistic * (0.75 + 0.25 * magGate) + rateBoost);
     out.push({
       region,
       eventCount: list.length,
@@ -693,12 +694,9 @@ function scoreGlobal(events, weights, threshold = 0.5, scaler = null) {
   const logistic = scoreProbability(feat, weights);
   const maxMag = Math.max(...events.map((e) => e.magnitude));
   const m4 = events.filter((e) => e.magnitude >= 4).length;
-  const magGate = Math.min(1, Math.max(0.2, (maxMag - 2.8) / 3.2));
-  const rateBoost = Math.min(1, m4 / 8) * 0.12 * magGate;
-  const prob = Math.min(
-    0.99,
-    (logistic * 0.9 + rateBoost + feat.ringOfFire * 0.05) * magGate + logistic * (1 - magGate) * 0.4,
-  );
+  const magGate = Math.min(1, Math.max(0.3, (maxMag - 2.5) / 4));
+  const rateBoost = Math.min(0.06, (m4 / 10) * 0.06 * magGate);
+  const prob = Math.min(0.97, logistic * (0.75 + 0.25 * magGate) + rateBoost);
   return {
     score: Math.round(prob * 100),
     level: riskLevel(prob, threshold),
@@ -935,7 +933,9 @@ function evaluateHoldout(test, weights, threshold = 0.5) {
 function scoreProbability(x, weights) {
   let s = weights.bias || 0;
   for (const k of FEATURE_KEYS) {
-    s += (weights[k] || 0) * (x[k] || 0);
+    // Soft-compress extremes so a few hot features can't pin every region to ~1
+    const v = Math.tanh((x[k] || 0) / 2.2);
+    s += (weights[k] || 0) * v;
   }
   return sigmoid(s);
 }
@@ -1058,8 +1058,10 @@ function sigmoid(z) {
 }
 
 function riskLevel(p, threshold = 0.5) {
-  if (p >= Math.max(0.7, threshold + 0.15)) return 'elevated';
-  if (p >= Math.max(0.35, threshold - 0.05)) return 'watch';
+  const elev = Math.min(0.92, Math.max(0.55, threshold));
+  const watch = Math.min(elev - 0.12, Math.max(0.28, threshold - 0.25));
+  if (p >= elev) return 'elevated';
+  if (p >= watch) return 'watch';
   return 'quiet';
 }
 
@@ -1068,6 +1070,10 @@ function globalLabel(p, events) {
   if (p >= 0.7) return `Elevated activity risk — peak M${max.toFixed(1)}`;
   if (p >= 0.4) return `Moderate watch — peak M${max.toFixed(1)}`;
   return `Quiet window — peak M${max.toFixed(1)}`;
+}
+
+function clamp(n, lo, hi) {
+  return Math.max(lo, Math.min(hi, n));
 }
 
 function avg(nums) {
