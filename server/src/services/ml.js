@@ -75,7 +75,7 @@ const PRIOR = {
   neighborProxy: 0.35,
 };
 
-const CELL_DEG = 2.5; // finer cells → tighter spatial labels
+const CELL_DEG = 3; // balance spatial specificity vs label density
 const WEIGHTS_KEY = 'ml:weights';
 
 /* -------------------------------------------------------------------------- */
@@ -135,29 +135,41 @@ export function trainRiskModel(events = [], opts = {}) {
     magThreshold,
   });
 
-  // Chronological split first (avoids leakage from overlapping windows)
+  // Time-blocked split: train on earlier windows, hold out the latest 20%
+  // (honest generalization; avoids leakage from overlapping adjacent samples)
   samples.sort((a, b) => (a.t || 0) - (b.t || 0));
   if (samples.length > maxSamples) {
-    samples = stratifiedSample(samples, maxSamples);
-    samples.sort((a, b) => (a.t || 0) - (b.t || 0));
+    // Cap while preserving time order + class mix
+    const cutCap = Math.floor(samples.length * 0.85);
+    const recent = samples.slice(cutCap);
+    const older = samples.slice(0, cutCap);
+    const keepOlder = stratifiedSample(older, Math.max(1000, maxSamples - recent.length));
+    samples = [...keepOlder, ...recent].sort((a, b) => (a.t || 0) - (b.t || 0));
+    if (samples.length > maxSamples) {
+      samples = samples.slice(samples.length - maxSamples);
+    }
   }
 
   const scaler = fitScaler(samples.map((s) => s.x));
   samples = samples.map((s) => ({ ...s, x: applyScaler(s.x, scaler) }));
 
   const cut = Math.floor(samples.length * 0.8);
-  const train = samples.slice(0, Math.max(1, cut));
+  const trainRaw = samples.slice(0, Math.max(1, cut));
   const test = samples.slice(cut);
+  // Light shuffle only within train (order irrelevant for SGD)
+  const train = [...trainRaw];
+  shuffleInPlace(train);
 
   let weights = { ...PRIOR };
   for (const k of FEATURE_KEYS) {
-    const sd = scaler.std[k] || 1;
-    weights[k] = (weights[k] || 0) * Math.min(sd, 1);
+    weights[k] = weights[k] || 0;
   }
 
   const velocity = Object.fromEntries(FEATURE_KEYS.map((k) => [k, 0]));
   velocity.bias = 0;
-  const momentum = 0.9;
+  const momentum = 0.88;
+  const posRate = train.filter((s) => s.y === 1).length / Math.max(1, train.length);
+  const posWeight = Math.min(3.2, Math.max(1.4, (1 - posRate) / Math.max(posRate, 0.05)));
 
   let bestWeights = { ...weights };
   let bestScore = -1;
@@ -165,33 +177,32 @@ export function trainRiskModel(events = [], opts = {}) {
 
   if (train.length >= 12) {
     for (let epoch = 0; epoch < epochs; epoch++) {
-      const lr = lr0 * (1 / (1 + epoch * 0.03));
-      const batch = balancedEpochBatch(train, Math.min(train.length, 10_000));
+      const lr = lr0 * (1 / (1 + epoch * 0.028));
+      const batch = balancedEpochBatch(train, Math.min(train.length, 12_000));
       for (const s of batch) {
         const pred = scoreProbability(s.x, weights);
         const err = pred - s.y;
-        // Focal-ish: up-weight hard examples + slight positive emphasis
-        const focal = Math.pow(Math.abs(err), 1.4);
-        const cw = (s.y === 1 ? 1.25 : 1) * (0.55 + focal);
+        const focal = 0.4 + Math.pow(Math.abs(err), 1.25);
+        const cw = (s.y === 1 ? posWeight : 1) * focal;
         for (const k of FEATURE_KEYS) {
-          const g = cw * err * (s.x[k] || 0) + 0.0012 * (weights[k] || 0);
+          const g = cw * err * (s.x[k] || 0) + 0.0015 * (weights[k] || 0);
           velocity[k] = momentum * velocity[k] - lr * g;
           weights[k] = (weights[k] || 0) + velocity[k];
         }
-        const gb = cw * err + 0.0005 * (weights.bias || 0);
+        const gb = cw * err + 0.0006 * (weights.bias || 0);
         velocity.bias = momentum * velocity.bias - lr * gb;
         weights.bias += velocity.bias;
       }
 
-      if (test.length >= 40 && epoch % 3 === 2) {
+      if (test.length >= 40 && epoch % 2 === 1) {
         const t = tuneThreshold(test, weights);
         const m = evaluateHoldout(test, weights, t);
-        const score = m.f1 + Math.min(m.precision, 0.55) * 0.25;
+        const score = m.f1 * 0.7 + m.precision * 0.3;
         if (score > bestScore) {
           bestScore = score;
           bestWeights = { ...weights };
           patience = 0;
-        } else if (++patience >= 7) {
+        } else if (++patience >= 8) {
           weights = bestWeights;
           break;
         }
@@ -830,8 +841,8 @@ function extractRegion(place = '') {
 }
 
 /**
- * Pick decision threshold that maximizes precision-aware F1.
- * Prefer fewer false "elevated" alerts over max recall.
+ * Pick decision threshold that maximizes precision-aware F-beta.
+ * Always returns a tuned value (never stuck on an unmet precision floor).
  */
 function tuneThreshold(samples, weights) {
   if (!samples?.length) return 0.5;
@@ -839,11 +850,11 @@ function tuneThreshold(samples, weights) {
     p: scoreProbability(s.x, weights),
     y: s.y,
   }));
-  let bestT = 0.55;
+  let bestT = 0.5;
   let bestScore = -1;
 
-  for (let i = 8; i <= 18; i += 1) {
-    const t = i / 20; // 0.40 … 0.90
+  for (let i = 6; i <= 18; i += 1) {
+    const t = i / 20; // 0.30 … 0.90
     let tp = 0;
     let fp = 0;
     let fn = 0;
@@ -855,13 +866,14 @@ function tuneThreshold(samples, weights) {
     }
     const precision = tp / Math.max(1, tp + fp);
     const recall = tp / Math.max(1, tp + fn);
-    // F-beta with beta=0.7 → lean precision
-    const beta = 0.7;
+    if (tp + fp === 0) continue;
+    // F0.75 — prefer precision without abandoning recall
+    const beta = 0.75;
     const fBeta =
       ((1 + beta * beta) * precision * recall) /
       Math.max(1e-6, beta * beta * precision + recall);
-    const score = fBeta + Math.min(precision, 0.6) * 0.35;
-    if (score > bestScore && precision >= 0.28) {
+    const score = fBeta + precision * 0.4 + Math.min(recall, 0.55) * 0.1;
+    if (score > bestScore) {
       bestScore = score;
       bestT = t;
     }
@@ -932,16 +944,11 @@ function evaluateModel(samples, weights, threshold = 0.5) {
 function stratifiedSample(samples, n) {
   const pos = samples.filter((s) => s.y === 1);
   const neg = samples.filter((s) => s.y === 0);
-  // Keep closer to natural prevalence (~25–35% positives) for honest metrics
-  const posN = Math.min(pos.length, Math.floor(n * 0.32));
+  const posN = Math.min(pos.length, Math.floor(n * 0.35));
   const negN = Math.min(neg.length, n - posN);
-  // Prefer hard negatives: higher maxMag / rate windows
-  neg.sort((a, b) => (b.x?.rate24h || 0) + (b.x?.maxMag24h || 0) - ((a.x?.rate24h || 0) + (a.x?.maxMag24h || 0)));
   shuffleInPlace(pos);
-  const hardNeg = neg.slice(0, Math.floor(negN * 0.55));
-  const restNeg = neg.slice(Math.floor(negN * 0.55));
-  shuffleInPlace(restNeg);
-  return [...pos.slice(0, posN), ...hardNeg, ...restNeg.slice(0, negN - hardNeg.length)];
+  shuffleInPlace(neg);
+  return [...pos.slice(0, posN), ...neg.slice(0, negN)];
 }
 
 function initCentroids(pts, k) {
