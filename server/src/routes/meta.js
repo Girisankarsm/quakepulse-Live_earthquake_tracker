@@ -1,0 +1,39 @@
+import { Router } from 'express';
+import { APP, USGS_FEEDS } from '../config.js';
+
+const router = Router();
+const startedAt = Date.now();
+
+router.get('/health', (_req, res) => {
+  res.json({
+    ok: true,
+    name: APP.name,
+    version: APP.version,
+    uptimeSec: Math.round((Date.now() - startedAt) / 1000),
+    feeds: Object.keys(USGS_FEEDS),
+  });
+});
+
+router.get('/meta', (_req, res) => {
+  res.json({
+    ...APP,
+    feeds: Object.entries(USGS_FEEDS).map(([id, f]) => ({ id, label: f.label })),
+    nav: [
+      { id: 'overview', label: 'Overview', description: 'KPIs & trends' },
+      { id: 'map', label: 'Map', description: 'Geospatial intelligence' },
+      { id: 'analytics', label: 'Analytics', description: 'Depth & patterns' },
+      { id: 'predict', label: 'Predict', description: 'Early activity risk' },
+      { id: 'alerts', label: 'Alerts', description: 'Threshold monitor' },
+      { id: 'news', label: 'News', description: 'Regional coverage' },
+      { id: 'data', label: 'Data', description: 'Registry & export' },
+    ],
+    ml: {
+      version: '2.0.0',
+      endpoints: ['/api/ml/model', '/api/ml/predict', '/api/ml/patterns', '/api/ml/train'],
+      disclaimer:
+        'Short-horizon elevated activity nowcast from multi-catalog seismicity — not deterministic earthquake prediction.',
+    },
+  });
+});
+
+export default router;

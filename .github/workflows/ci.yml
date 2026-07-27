@@ -1,4 +1,5 @@
-name = "CI"
+name: CI
+
 on:
   push:
     branches: [main]
@@ -10,18 +11,22 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11"]
+        node-version: [18, 20]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          python-version: ${{ matrix.python-version }}
+          node-version: ${{ matrix.node-version }}
+          cache: npm
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: npm install
 
-      - name: Run tests
-        run: pytest tests/ -v --tb=short
+      - name: Run server tests
+        run: npm test
+
+      - name: Build client
+        run: npm run build

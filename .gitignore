@@ -1,16 +1,35 @@
-# Python
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.vite/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Runtime ML artifacts
+server/data/
+server/models/
+
+# Python (legacy)
 __pycache__/
 *.py[cod]
 *.egg-info/
 .eggs/
-dist/
-build/
 .venv/
 venv/
 env/
-
-# Streamlit
-.streamlit/secrets.toml
+.pytest_cache/
+.coverage
+htmlcov/
 
 # IDE & OS
 .idea/
@@ -20,8 +39,4 @@ env/
 
 # Exported artifacts
 live_earthquake_*.html
-
-# Test & coverage
-.pytest_cache/
-.coverage
-htmlcov/
+*.log
