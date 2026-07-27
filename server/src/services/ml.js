@@ -40,34 +40,42 @@ const FEATURE_KEYS = [
   'depthTrend',
   'sequenceLen',
   'omoriProxy',
+  'energyBurst',
+  'm4Recency',
+  'quiescenceBreak',
+  'neighborProxy',
 ];
 
 const PRIOR = {
-  bias: -1.6,
-  rate1h: 0.85,
-  rate6h: 0.45,
-  rate24h: 0.25,
-  countM3: 0.4,
-  countM4: 0.95,
-  countM5: 1.2,
-  maxMag24h: 0.8,
-  avgMag24h: 0.3,
-  magStd: 0.35,
-  shallowRatio: 0.25,
-  clustering: 0.55,
-  energyNorm: 0.4,
-  magAccel: 0.75,
-  hoursSinceStrong: -0.55,
-  hoursSinceAny: -0.2,
-  interEventCv: 0.3,
-  bValueProxy: 0.15,
-  ringOfFire: 0.45,
-  depthTrend: 0.2,
-  sequenceLen: 0.4,
-  omoriProxy: 0.6,
+  bias: -1.85,
+  rate1h: 0.9,
+  rate6h: 0.5,
+  rate24h: 0.22,
+  countM3: 0.35,
+  countM4: 1.05,
+  countM5: 1.35,
+  maxMag24h: 0.85,
+  avgMag24h: 0.25,
+  magStd: 0.4,
+  shallowRatio: 0.2,
+  clustering: 0.6,
+  energyNorm: 0.45,
+  magAccel: 0.8,
+  hoursSinceStrong: -0.6,
+  hoursSinceAny: -0.25,
+  interEventCv: 0.28,
+  bValueProxy: 0.12,
+  ringOfFire: 0.4,
+  depthTrend: 0.18,
+  sequenceLen: 0.35,
+  omoriProxy: 0.7,
+  energyBurst: 0.85,
+  m4Recency: 0.95,
+  quiescenceBreak: 0.55,
+  neighborProxy: 0.35,
 };
 
-const CELL_DEG = 3; // finer spatial cells → deeper labels
+const CELL_DEG = 2.5; // finer cells → tighter spatial labels
 const WEIGHTS_KEY = 'ml:weights';
 
 /* -------------------------------------------------------------------------- */
@@ -110,16 +118,16 @@ export function analyzePatterns(events, model) {
 /**
  * Train early-risk logistic model from catalog events.
  * Labels: spatial cell has M>=threshold in next horizonHours after lookback.
- * Uses z-scored features, balanced epochs, early stopping on val F1.
+ * Chronological holdout, z-scored features, balanced epochs, precision-aware F1.
  */
 export function trainRiskModel(events = [], opts = {}) {
-  const epochs = opts.epochs ?? 55;
-  const lr0 = opts.lr ?? 0.08;
+  const epochs = opts.epochs ?? 60;
+  const lr0 = opts.lr ?? 0.07;
   const horizonHours = opts.horizonHours ?? 6;
   const lookbackHours = opts.lookbackHours ?? 24;
   const magThreshold = opts.magThreshold ?? 4.0;
   const persist = opts.persist !== false;
-  const maxSamples = opts.maxSamples ?? 30_000;
+  const maxSamples = opts.maxSamples ?? 40_000;
 
   let samples = buildLabeledSamples(events, {
     horizonHours,
@@ -127,14 +135,16 @@ export function trainRiskModel(events = [], opts = {}) {
     magThreshold,
   });
 
+  // Chronological split first (avoids leakage from overlapping windows)
+  samples.sort((a, b) => (a.t || 0) - (b.t || 0));
   if (samples.length > maxSamples) {
     samples = stratifiedSample(samples, maxSamples);
+    samples.sort((a, b) => (a.t || 0) - (b.t || 0));
   }
 
   const scaler = fitScaler(samples.map((s) => s.x));
   samples = samples.map((s) => ({ ...s, x: applyScaler(s.x, scaler) }));
 
-  shuffleInPlace(samples);
   const cut = Math.floor(samples.length * 0.8);
   const train = samples.slice(0, Math.max(1, cut));
   const test = samples.slice(cut);
@@ -147,26 +157,28 @@ export function trainRiskModel(events = [], opts = {}) {
 
   const velocity = Object.fromEntries(FEATURE_KEYS.map((k) => [k, 0]));
   velocity.bias = 0;
-  const momentum = 0.92;
+  const momentum = 0.9;
 
   let bestWeights = { ...weights };
-  let bestF1 = -1;
+  let bestScore = -1;
   let patience = 0;
 
   if (train.length >= 12) {
     for (let epoch = 0; epoch < epochs; epoch++) {
-      const lr = lr0 * (1 / (1 + epoch * 0.035));
-      const batch = balancedEpochBatch(train, Math.min(train.length, 8000));
+      const lr = lr0 * (1 / (1 + epoch * 0.03));
+      const batch = balancedEpochBatch(train, Math.min(train.length, 10_000));
       for (const s of batch) {
         const pred = scoreProbability(s.x, weights);
         const err = pred - s.y;
-        const cw = s.y === 1 ? 1.35 : 1;
+        // Focal-ish: up-weight hard examples + slight positive emphasis
+        const focal = Math.pow(Math.abs(err), 1.4);
+        const cw = (s.y === 1 ? 1.25 : 1) * (0.55 + focal);
         for (const k of FEATURE_KEYS) {
-          const g = cw * err * (s.x[k] || 0) + 0.0008 * (weights[k] || 0);
+          const g = cw * err * (s.x[k] || 0) + 0.0012 * (weights[k] || 0);
           velocity[k] = momentum * velocity[k] - lr * g;
           weights[k] = (weights[k] || 0) + velocity[k];
         }
-        const gb = cw * err + 0.0004 * (weights.bias || 0);
+        const gb = cw * err + 0.0005 * (weights.bias || 0);
         velocity.bias = momentum * velocity.bias - lr * gb;
         weights.bias += velocity.bias;
       }
@@ -174,17 +186,18 @@ export function trainRiskModel(events = [], opts = {}) {
       if (test.length >= 40 && epoch % 3 === 2) {
         const t = tuneThreshold(test, weights);
         const m = evaluateHoldout(test, weights, t);
-        if (m.f1 > bestF1) {
-          bestF1 = m.f1;
+        const score = m.f1 + Math.min(m.precision, 0.55) * 0.25;
+        if (score > bestScore) {
+          bestScore = score;
           bestWeights = { ...weights };
           patience = 0;
-        } else if (++patience >= 6) {
+        } else if (++patience >= 7) {
           weights = bestWeights;
           break;
         }
       }
     }
-    if (bestF1 > 0) weights = bestWeights;
+    if (bestScore > 0) weights = bestWeights;
   }
 
   const threshold = tuneThreshold(test.length >= 20 ? test : samples, weights);
@@ -192,8 +205,8 @@ export function trainRiskModel(events = [], opts = {}) {
   const clusters = kMeansClusters(events, Math.min(8, Math.max(2, Math.floor(events.length / 50))));
 
   const model = {
-    version: MODEL_VERSION || '3.1.0',
-    type: 'early-activity-risk-logistic-v31',
+    version: MODEL_VERSION || '3.2.0',
+    type: 'early-activity-risk-logistic-v32',
     trainedAt: new Date().toISOString(),
     samples: samples.length,
     trainSamples: train.length,
@@ -402,26 +415,50 @@ function buildLabeledSamples(events, { horizonHours, lookbackHours, magThreshold
 
   // Spatial cells generalize better than place-name regions
   const byCell = groupBySpatialCell(events, CELL_DEG);
-  const samples = [];
-  const stepMs = 2 * 3_600_000; // every 2h → denser labels
+  // Neighbor activity index: count of events in adjacent cells (coarse prior)
+  const cellActivity = new Map();
+  for (const [key, list] of byCell) {
+    cellActivity.set(key, list.length);
+  }
 
-  for (const [, list] of byCell) {
-    if (list.length < 3) continue;
+  const samples = [];
+  const stepMs = 3 * 3_600_000; // every 3h — less overlap / leakage
+
+  for (const [cellKey, list] of byCell) {
+    if (list.length < 4) continue;
     const sorted = [...list].sort((a, b) => a.timeMs - b.timeMs);
     const t0 = sorted[0].timeMs + lookbackHours * 3_600_000;
     const tMax = sorted[sorted.length - 1].timeMs - horizonHours * 3_600_000;
     if (tMax <= t0) continue;
+
+    const [latBin, lonBin] = cellKey.split(':').map(Number);
+    let neighborSum = 0;
+    let neighborN = 0;
+    for (let dlat = -1; dlat <= 1; dlat++) {
+      for (let dlon = -1; dlon <= 1; dlon++) {
+        if (dlat === 0 && dlon === 0) continue;
+        const n = cellActivity.get(`${latBin + dlat}:${lonBin + dlon}`) || 0;
+        neighborSum += n;
+        neighborN += 1;
+      }
+    }
+    const neighborProxy = Math.min(1, neighborSum / Math.max(1, neighborN) / 40);
 
     for (let t = t0; t <= tMax; t += stepMs) {
       const hist = sorted.filter(
         (e) => e.timeMs >= t - lookbackHours * 3_600_000 && e.timeMs < t,
       );
       if (hist.length < 2) continue;
+      // Skip dead-quiet windows — labels are noise without recent seismicity
+      if (hist.every((e) => e.magnitude < 2.5) && hist.length < 5) continue;
+
       const future = sorted.filter(
         (e) => e.timeMs >= t && e.timeMs < t + horizonHours * 3_600_000,
       );
       const y = future.some((e) => e.magnitude >= magThreshold) ? 1 : 0;
-      samples.push({ x: regionWindowFeatures(hist, t), y });
+      const x = regionWindowFeatures(hist, t);
+      x.neighborProxy = neighborProxy;
+      samples.push({ x, y, t });
     }
   }
 
@@ -483,6 +520,18 @@ function regionWindowFeatures(list, nowMs = Date.now()) {
     omoriProxy = Math.min(1, after.length / Math.sqrt(hoursAfter) / 8);
   }
 
+  const energy = (evs) =>
+    evs.reduce((s, e) => s + (e.energyJ || 10 ** (1.5 * e.magnitude + 4.8)), 0);
+  const e3 = energy(h24.filter((e) => e.timeMs >= nowMs - 3 * 3_600_000));
+  const eRest = Math.max(energy(h24) - e3, 1);
+  const energyBurst = Math.min(1, Math.log10(1 + e3 / eRest) / 2);
+  const m4Recency = lastM4
+    ? Math.max(0, 1 - (nowMs - lastM4.timeMs) / (36 * 3_600_000))
+    : 0;
+  // Break of quiescence: recent rate spike after a quiet first half
+  const quiescenceBreak =
+    r1 < 0.15 && r2 > r1 * 2 ? Math.min(1, (r2 - r1) / 2) : Math.max(0, (r2 - r1) / 4);
+
   return {
     rate1h: Math.min(h1.length / 5, 1),
     rate6h: Math.min(h6.length / 15, 1),
@@ -505,6 +554,10 @@ function regionWindowFeatures(list, nowMs = Date.now()) {
     depthTrend: (depthTrend + 1) / 2,
     sequenceLen,
     omoriProxy,
+    energyBurst,
+    m4Recency,
+    quiescenceBreak: Math.min(1, Math.max(0, quiescenceBreak)),
+    neighborProxy: 0.3,
   };
 }
 
@@ -777,8 +830,8 @@ function extractRegion(place = '') {
 }
 
 /**
- * Pick decision threshold that maximizes F1 on the sample set.
- * Falls back to 0.5 when there is too little labeled data.
+ * Pick decision threshold that maximizes precision-aware F1.
+ * Prefer fewer false "elevated" alerts over max recall.
  */
 function tuneThreshold(samples, weights) {
   if (!samples?.length) return 0.5;
@@ -786,12 +839,11 @@ function tuneThreshold(samples, weights) {
     p: scoreProbability(s.x, weights),
     y: s.y,
   }));
-  let bestT = 0.5;
+  let bestT = 0.55;
   let bestScore = -1;
 
-  // Keep threshold in a usable band — unconstrained F1 often collapses near 0
-  for (let i = 7; i <= 16; i += 1) {
-    const t = i / 20; // 0.35 … 0.80
+  for (let i = 8; i <= 18; i += 1) {
+    const t = i / 20; // 0.40 … 0.90
     let tp = 0;
     let fp = 0;
     let fn = 0;
@@ -803,10 +855,13 @@ function tuneThreshold(samples, weights) {
     }
     const precision = tp / Math.max(1, tp + fp);
     const recall = tp / Math.max(1, tp + fn);
-    const f1 = (2 * precision * recall) / Math.max(1e-6, precision + recall);
-    // Prefer balanced precision (≥0.35) when possible
-    const score = f1 + Math.min(precision, 0.45) * 0.15;
-    if (score > bestScore) {
+    // F-beta with beta=0.7 → lean precision
+    const beta = 0.7;
+    const fBeta =
+      ((1 + beta * beta) * precision * recall) /
+      Math.max(1e-6, beta * beta * precision + recall);
+    const score = fBeta + Math.min(precision, 0.6) * 0.35;
+    if (score > bestScore && precision >= 0.28) {
       bestScore = score;
       bestT = t;
     }
@@ -877,11 +932,16 @@ function evaluateModel(samples, weights, threshold = 0.5) {
 function stratifiedSample(samples, n) {
   const pos = samples.filter((s) => s.y === 1);
   const neg = samples.filter((s) => s.y === 0);
-  const posN = Math.min(pos.length, Math.floor(n * 0.4));
+  // Keep closer to natural prevalence (~25–35% positives) for honest metrics
+  const posN = Math.min(pos.length, Math.floor(n * 0.32));
   const negN = Math.min(neg.length, n - posN);
+  // Prefer hard negatives: higher maxMag / rate windows
+  neg.sort((a, b) => (b.x?.rate24h || 0) + (b.x?.maxMag24h || 0) - ((a.x?.rate24h || 0) + (a.x?.maxMag24h || 0)));
   shuffleInPlace(pos);
-  shuffleInPlace(neg);
-  return [...pos.slice(0, posN), ...neg.slice(0, negN)];
+  const hardNeg = neg.slice(0, Math.floor(negN * 0.55));
+  const restNeg = neg.slice(Math.floor(negN * 0.55));
+  shuffleInPlace(restNeg);
+  return [...pos.slice(0, posN), ...hardNeg, ...restNeg.slice(0, negN - hardNeg.length)];
 }
 
 function initCentroids(pts, k) {
